@@ -1,5 +1,6 @@
 # include "kalman_filter_task.hpp"
 #include <Eigen/src/Core/Matrix.h>
+#include <cmath>
 # include <eigen3/Eigen/Eigen>
 
 
@@ -14,9 +15,51 @@ namespace kalfilter
 {
     namespace 
     {
+
+        constexpr double kPI = 3.14159265358979323846;
+
         void wrap ()
         {
 
+        }
+
+        //h(X_),是九维列向量转换为四维列向量，从描述中心到描述装甲板
+        Eigen::Matrix<double,4,1> observationModel(const Eigen::Matrix<double,4,1>& X_,int id )
+        {
+            Eigen::Matrix<double,4,1> y;
+            y << X_(0)+X_(8)*std::sin(X_(3)+id*kPI*0.5),
+             X_(1),
+             X_(2)+X_(8)*std::cos(X_(3)+id*kPI*0.5),
+             X_(3)+id*kPI*0.5;
+
+            return y;
+        }
+
+        //计算新息雅克布矩阵H
+        Eigen::Matrix<double,4,9> observationJacobian(const Eigen::Matrix<double,9,1>& X_, int id)
+        {
+            const double c = id * kPI * 0.5;
+            const double theta = X_(3) + c;
+            const double s = std::sin(theta);
+            const double co = std::cos(theta);
+            const double r = X_(8);
+
+            Eigen::Matrix<double,4,9> J {};
+        
+
+            J(0,0) = 1.0;
+            J(0,3) =  r * co;
+            J(0,8) =  s;
+
+            J(1,1) = 1.0;
+
+            J(2,2) = 1.0;
+            J(2,3) = -r * s;
+            J(2,8) =  co;
+
+            J(3,3) = 1.0;
+
+            return J;
         }
 
     }
@@ -63,7 +106,7 @@ namespace kalfilter
             Q(i,j) = p * dt3 / 2.0;
             Q(j,i) = p * dt3 / 2.0;
             Q(j,j) = p * dt2;
-        };//lambda看着真舒服，[&]不用多写
+        };//lambda看着真舒服，[&]后不用多写输入
 
         fill_block(0,4, config.p_coord);
         fill_block(1,5, config.p_coord);
@@ -75,6 +118,17 @@ namespace kalfilter
         
         //正定化，就是沿对角线对称
         P = 0.5 * (P + P.transpose());
+
+    }
+
+
+    void KalmanFilter::update (armerState armor )
+    {
+        //h(X_)部分写在匿名命名空间
+        //计算残差
+        Eigen::Matrix<double,4,1> residual {armor.measurement-observationModel(X,armor.id)};
+
+        //计算新息雅克布矩阵H写在匿名命名空间
 
     }
 }

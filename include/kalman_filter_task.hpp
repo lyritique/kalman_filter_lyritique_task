@@ -1,3 +1,5 @@
+# ifndef __KALMAN__
+# define __KALMAN__
 # include <eigen3/Eigen/Eigen>
 
 
@@ -13,21 +15,12 @@ struct KalmanConfig
     double p_r {};
 };
 
-struct aromerState {
-  // 位置（世界系，m）
-  double px {};
-  double py {};
-  double pz {};
-  double yaw = 0.0;  // 朝向（rad）
+struct armerState 
+{
+    Eigen::Matrix<double,4,1> measurement;
+    int id ;
 
-  // 速度（世界系，m/s 与 rad/s）
-  double vx = 0.0;
-  double vy = 0.0;
-  double vz = 0.0;
-  double vyaw = 0.0;
-
-  bool valid = false;
-  std::string reason;
+  
 };
 
 class KalmanFilter
@@ -47,9 +40,10 @@ class KalmanFilter
         bool initialized = false;
         void predict(const double& dt,const KalmanConfig& config);
         // wrap=true 时，新息按 [-pi, pi] 环绕（只给 yaw 用）
-        void update(double measurement, double r, bool wrap);
+        void update(armerState armor);
         
 };
 
 
 }
+# endif
