@@ -17,6 +17,7 @@ struct imu
 std::vector<imu> readImuTxt(std::string file_address);
 
 
+kalfilter::imu interpolateQuat(const std::vector<kalfilter::imu>& imu_data,double camTime);
 
 
 }
