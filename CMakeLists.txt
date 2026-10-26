@@ -10,7 +10,8 @@ find_package(Eigen3 REQUIRED)
 
 add_executable(
     kalman_filter
-    src/kalman_filter.cc 
+    src/kalman_filter.cc
+    src/imu_alignment.cc
 )
 
 target_include_directories(kalman_filter PRIVATE include/)
