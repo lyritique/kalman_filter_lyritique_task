@@ -1,5 +1,8 @@
+# ifndef _IMU_
+# define _IMU_
+
 # include <eigen3/Eigen/Eigen>
-#include <vector>
+# include <vector>
 
 namespace kalfilter 
 {
@@ -8,10 +11,7 @@ namespace kalfilter
 struct imu 
 {
     double time;
-    double q_w;
-    double q_x;
-    double q_y;
-    double q_z;
+    Eigen::Quaterniond q;
 };
 
 std::vector<imu> readImuTxt(std::string file_address);
@@ -20,3 +20,6 @@ std::vector<imu> readImuTxt(std::string file_address);
 
 
 }
+
+
+# endif
