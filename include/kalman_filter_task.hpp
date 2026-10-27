@@ -34,7 +34,7 @@ struct cam_ypd
 struct armerState 
 {
     Eigen::Matrix<double,4,1> measurement;
-    int id ;
+    int id = -1;
 
   
 };
@@ -44,8 +44,10 @@ class KalmanFilter
     public:
         explicit KalmanFilter(const KalmanConfig& config = KalmanConfig{});
 
-        void init(const double measurement[4]);
+        void init(const armerState& measurement);
         void reset();
+        void predict(const double& dt,const KalmanConfig& config);
+        void update(const armerState& armor ,const KalmanConfig& config ,const cam_ypd& ypd);
     private:
         
         
@@ -54,9 +56,6 @@ class KalmanFilter
         Eigen::Matrix<double,9,9> F {};
 
         bool initialized = false;
-        void predict(const double& dt,const KalmanConfig& config);
-        // wrap=true 时，新息按 [-pi, pi] 环绕（只给 yaw 用）
-        void update(armerState armor ,KalmanConfig config ,cam_ypd ypd);
         
 };
 

@@ -1,6 +1,6 @@
 # include "kalman_filter_task.hpp"
-#include <Eigen/src/Core/Matrix.h>
-#include <cmath>
+# include <Eigen/src/Core/Matrix.h>
+# include <cmath>
 # include <eigen3/Eigen/Eigen>
 
 
@@ -18,13 +18,15 @@ namespace kalfilter
 
         constexpr double kPI = 3.14159265358979323846;
 
-        void wrap ()
+        double wrap(double a) 
         {
-
+            while (a > kPI) a -= 2.0 * kPI;
+            while (a < -kPI) a += 2.0 * kPI;
+            return a;
         }
 
         //h(X_),是九维列向量转换为四维列向量，从描述中心到描述装甲板
-        Eigen::Matrix<double,4,1> observationModel(const Eigen::Matrix<double,4,1>& X_,int id )
+        Eigen::Matrix<double,4,1> observationModel(const Eigen::Matrix<double,9,1>& X_,int id )
         {
             Eigen::Matrix<double,4,1> y;
             y << X_(0)+X_(8)*std::sin(X_(3)+id*kPI*0.5),
@@ -77,9 +79,9 @@ namespace kalfilter
             yaw无变换
             */
             Eigen::Matrix4d J {};
-            J.col(0) =  Eigen::Vector3d(ypd.dist*c_e*c_a,  -ypd.dist*s_e*s_a,  c_e*s_a);      
-            J.col(1) =  Eigen::Vector3d(0.0,               ypd.dist*c_e,       s_e);      
-            J.col(2) =  Eigen::Vector3d(-ypd.dist*c_e*s_a, -ypd.dist*s_e*c_a,  c_e*c_a);
+            J.row(0) =  Eigen::Vector4d(ypd.dist*c_e*c_a,  -ypd.dist*s_e*s_a,  c_e*s_a,0.0);      
+            J.row(1) =  Eigen::Vector4d(0.0,               ypd.dist*c_e,       s_e    ,0.0);      
+            J.row(2) =  Eigen::Vector4d(-ypd.dist*c_e*s_a, -ypd.dist*s_e*c_a,  c_e*c_a,0.0);
             J(3,3) = 1.0;
 
             //深度噪声
@@ -98,9 +100,13 @@ namespace kalfilter
 
     }
     
-    void KalmanFilter::init(const double *measurement)
+    void KalmanFilter::init(const armerState& measurement)
     {
         F.setIdentity();
+        X.head<4>() = measurement.measurement.head<4>();
+        X(8) = 0.26; //魔法数字
+        initialized = true;
+
     }
 
 
@@ -121,7 +127,8 @@ namespace kalfilter
         X(2) += X(6)*dt;
         X(3) += X(7)*dt;
         */
-        X.head<4>() += X.segment<4>(4)*dt;
+        X.head<3>() += X.segment<3>(4)*dt;
+        X(3) += wrap(X(7)*dt);
 
         //计算雅克布矩阵
         //让它特定位置的4*4块变成单位乘dt，就是根据dt更新了
@@ -156,18 +163,19 @@ namespace kalfilter
     }
 
 
-    void KalmanFilter::update (armerState armor ,KalmanConfig config ,cam_ypd ypd)
+    void KalmanFilter::update (const armerState& armor ,const KalmanConfig& config ,const cam_ypd& ypd)
     {
         //h(X_)部分写在匿名命名空间
         //计算残差
         Eigen::Matrix<double,4,1> residual {armor.measurement-observationModel(X,armor.id)};
+        residual(3) = wrap(residual(3));
 
         //计算新息雅克布矩阵H写在匿名命名空间
 
         //观测噪声协方差矩阵 R 写在匿名命名空间
         //基于上科大开源技术
 
-        Eigen::Matrix4d H {computeH(X, armor.id)};
+        Eigen::Matrix<double,4,9> H {computeH(X, armor.id)};
         Eigen::Matrix4d R {computeR(config, ypd)};
 
         //计算新息协方差矩阵S
