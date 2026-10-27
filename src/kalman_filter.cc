@@ -36,7 +36,7 @@ namespace kalfilter
         }
 
         //计算新息雅克布矩阵H
-        Eigen::Matrix<double,4,9> observationJacobian(const Eigen::Matrix<double,9,1>& X_, int id)
+        Eigen::Matrix<double,4,9> computeH(const Eigen::Matrix<double,9,1>& X_, int id)
         {
             const double c = id * kPI * 0.5;
             const double theta = X_(3) + c;
@@ -60,6 +60,40 @@ namespace kalfilter
             J(3,3) = 1.0;
 
             return J;
+        }
+
+        Eigen::Matrix4d computeR(const KalmanConfig& config,const cam_ypd ypd)
+        {
+            //预计算
+            const double s_e {std::sin(ypd.ele)};
+            const double c_e {std::cos(ypd.ele)};
+            const double s_a {std::sin(ypd.azi)};
+            const double c_a {std::cos(ypd.azi)};
+
+            /*构造相机系下ypd->直角系的雅可比J
+            x = dist · cos(ele) · sin(azi)       右
+            y = dist · sin(ele)                  下
+            z = dist · cos(ele) · cos(azi)       前（光轴）
+            yaw无变换
+            */
+            Eigen::Matrix4d J {};
+            J.col(0) =  Eigen::Vector3d(ypd.dist*c_e*c_a,  -ypd.dist*s_e*s_a,  c_e*s_a);      
+            J.col(1) =  Eigen::Vector3d(0.0,               ypd.dist*c_e,       s_e);      
+            J.col(2) =  Eigen::Vector3d(-ypd.dist*c_e*s_a, -ypd.dist*s_e*c_a,  c_e*c_a);
+            J(3,3) = 1.0;
+
+            //深度噪声
+            const double sigma_dist = config.k_dist * ypd.dist;
+
+            //构造R_ypd，理论4*4，但对角，就写成向量吧
+            Eigen::Matrix<double,4,1> R_ypd(config.azi*config.azi,config.ele*config.ele,
+                                    sigma_dist*sigma_dist,config.yaw*config.yaw);
+
+            return  Eigen::Matrix4d   { J * R_ypd.asDiagonal() * J.transpose()};
+            
+
+
+
         }
 
     }
@@ -122,7 +156,7 @@ namespace kalfilter
     }
 
 
-    void KalmanFilter::update (armerState armor )
+    void KalmanFilter::update (armerState armor ,KalmanConfig config ,cam_ypd ypd)
     {
         //h(X_)部分写在匿名命名空间
         //计算残差
@@ -130,6 +164,22 @@ namespace kalfilter
 
         //计算新息雅克布矩阵H写在匿名命名空间
 
+        //观测噪声协方差矩阵 R 写在匿名命名空间
+        //基于上科大开源技术
+
+        Eigen::Matrix4d H {computeH(X, armor.id)};
+        Eigen::Matrix4d R {computeR(config, ypd)};
+
+        //计算新息协方差矩阵S
+        Eigen::Matrix4d S {H * P * H.transpose() + R};
+        
+        //kalman增益K
+        Eigen::MatrixXd K {P * H.transpose()*S.inverse()};
+
+        //更新X，P
+        X += K * residual;
+        Eigen::MatrixXd IKH = Eigen::MatrixXd::Identity(9, 9) - K * H;//就是I-KH
+        P = IKH * P * IKH.transpose() + K * R * K.transpose(); 
     }
 }
 
