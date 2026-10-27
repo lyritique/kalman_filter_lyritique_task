@@ -11,6 +11,21 @@ predict X_=f(X),P_=F*P*F^T+Q ,F=f(X)一阶导
 update  增益K=P*H^T*S^-1，  △X=K*y，  X^+=X_+△X
 */
 
+
+/*
+1.id没处理，感觉很复杂
+
+
+
+
+
+*/
+
+
+
+
+
+
 namespace kalfilter 
 {
     namespace 
@@ -103,13 +118,19 @@ namespace kalfilter
     void KalmanFilter::init(const armerState& measurement)
     {
         F.setIdentity();
-        X.head<4>() = measurement.measurement.head<4>();
-        X(8) = 0.26; //魔法数字
+        constexpr double radius = 0.26;
+        X(8) = radius; //魔法数字
+        const double c = measurement.id * kPI * 0.5;
+        X(3) = measurement.measurement(3) - c;                         // 旋转角
+        X(1) = measurement.measurement(1);                               // 高度/该轴直接对应
+        X(0) = measurement.measurement(0) - radius * std::sin(measurement.measurement(3));      // 由 y0 = X0 + X8·sin(yaw) 反解
+        X(2) = measurement.measurement(2) - radius * std::cos(measurement.measurement(3));      // 由 y2 = X2 + X8·cos(yaw) 反解
+        P.fill(0.1);
         initialized = true;
 
     }
 
-
+    
     void KalmanFilter::reset()
     {
         initialized = false;
@@ -128,7 +149,7 @@ namespace kalfilter
         X(3) += X(7)*dt;
         */
         X.head<3>() += X.segment<3>(4)*dt;
-        X(3) += wrap(X(7)*dt);
+        X(3) = wrap(X(7)*dt+X(3));
 
         //计算雅克布矩阵
         //让它特定位置的4*4块变成单位乘dt，就是根据dt更新了
