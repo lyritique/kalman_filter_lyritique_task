@@ -1,6 +1,7 @@
 # ifndef __KALMAN__
 # define __KALMAN__
 # include <eigen3/Eigen/Eigen>
+#include <vector>
 
 
 
@@ -9,6 +10,9 @@ namespace kalfilter {
 
 struct KalmanConfig
 {
+    
+
+
     //Q
     double p_coord = 100;
     double p_yaw = 400;
@@ -21,6 +25,11 @@ struct KalmanConfig
     double k_dist {0.05};
     double yaw {0.3};
 
+
+
+    double assoc_pos_gate {50};
+    double chi2_gate {9.49};
+
 };
 
 //相机系球坐标，用于求R观测噪声协方差矩阵，噪声天然的坐标系是 YPD
@@ -31,10 +40,20 @@ struct cam_ypd
     double dist {};
 };
 
+
+struct ObsAssociation {                     
+    int    id = -1;                            // 匹配到的 id
+    double d2 = std::numeric_limits<double>::infinity();
+    bool   valid = false;                      // 是否通过门限
+    Eigen::Matrix<double,4,1> nu;              // 残差（yaw 已 wrap）
+    Eigen::Matrix<double,4,9> H;               // 雅可比
+    Eigen::Matrix4d           Sinv;            // S 的逆，供更新复用
+};
+
 struct armerState 
 {
     Eigen::Matrix<double,4,1> measurement;
-    int id = -1;
+    kalfilter::ObsAssociation testResult;
 
   
 };
@@ -47,7 +66,7 @@ class KalmanFilter
         void init(const armerState& measurement);
         void reset();
         void predict(const double& dt,const KalmanConfig& config);
-        void update(const armerState& armor ,const KalmanConfig& config ,const cam_ypd& ypd);
+        void update(armerState& armor ,const KalmanConfig& config ,const cam_ypd& ypd);
     private:
         
         
@@ -56,6 +75,10 @@ class KalmanFilter
         Eigen::Matrix<double,9,9> F {};
 
         bool initialized = false;
+
+        std::vector<kalfilter::armerState> z_pred {};
+
+
         
 };
 

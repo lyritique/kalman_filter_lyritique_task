@@ -113,6 +113,58 @@ namespace kalfilter
 
         }
 
+        ObsAssociation associate 
+        (const armerState& armor,
+        std::vector<kalfilter::armerState> obs_list,
+        const Eigen::Matrix<double,9,1>& X,
+        const Eigen::Matrix<double,9,9>& P,
+        const KalmanConfig& config,
+        const Eigen::Matrix4d& R )
+        {
+            ObsAssociation best ;
+
+            //如果EKF中没存上次的装甲板，就直接返回默认值
+            if (obs_list.empty()) return best;
+
+            for (int i{};i < obs_list.size();++i)
+            {
+                // 欧氏的有关量的计算
+                Eigen::Matrix<double,4,1> h_id { observationModel(X, obs_list[i].testResult.id)};
+
+                Eigen::Matrix<double,4,1> nu { armor.measurement - h_id };
+                nu(3) = wrap(nu(3));
+
+                // 欧氏粗筛
+                const double pos = std::sqrt(nu(0)*nu(0)+nu(1)*nu(1)+nu(2)*nu(2));
+                if (pos > config.assoc_pos_gate) continue;
+
+                // 马氏距离的有关量的计算
+                Eigen::Matrix<double,4,9> H_id { computeH(X, obs_list[i].testResult.id)};
+                Eigen::Matrix4d S = H_id * P * H_id.transpose() + R;
+                Eigen::Matrix4d Sinv_id { S.ldlt().solve(Eigen::Matrix4d::Identity()) };//ai非说inverse不安全，让我改
+
+                //马氏距离
+                const double d2 = nu.transpose() * Sinv_id * nu;
+
+                if (d2 < best.d2) 
+                {
+                best.d2 = d2;
+                best.id = obs_list[i].testResult.id;
+                best.nu = nu;
+                best.H = H_id;
+                best.Sinv = Sinv_id;
+                }
+            }
+
+            if (best.d2 <= config.chi2_gate)
+            {
+                best.valid = true;
+            }
+
+            return best;
+            
+
+        }
     }
     
     void KalmanFilter::init(const armerState& measurement)
@@ -120,7 +172,7 @@ namespace kalfilter
         F.setIdentity();
         constexpr double radius = 0.26;
         X(8) = radius; //魔法数字
-        const double c = measurement.id * kPI * 0.5;
+        const double c = measurement.testResult.id * kPI * 0.5;
         X(3) = measurement.measurement(3) - c;                         // 旋转角
         X(1) = measurement.measurement(1);                               // 高度/该轴直接对应
         X(0) = measurement.measurement(0) - radius * std::sin(measurement.measurement(3));      // 由 y0 = X0 + X8·sin(yaw) 反解
@@ -184,11 +236,12 @@ namespace kalfilter
     }
 
 
-    void KalmanFilter::update (const armerState& armor ,const KalmanConfig& config ,const cam_ypd& ypd)
+    void KalmanFilter::update ( armerState& armor ,const KalmanConfig& config ,const cam_ypd& ypd)
     {
+        /*
         //h(X_)部分写在匿名命名空间
         //计算残差
-        Eigen::Matrix<double,4,1> residual {armor.measurement-observationModel(X,armor.id)};
+        Eigen::Matrix<double,4,1> residual {armor.measurement-observationModel(X,armor.testResult.id)};
         residual(3) = wrap(residual(3));
 
         //计算新息雅克布矩阵H写在匿名命名空间
@@ -196,20 +249,30 @@ namespace kalfilter
         //观测噪声协方差矩阵 R 写在匿名命名空间
         //基于上科大开源技术
 
-        Eigen::Matrix<double,4,9> H {computeH(X, armor.id)};
+        Eigen::Matrix<double,4,9> H {computeH(X, armor.testResult.id)};
         Eigen::Matrix4d R {computeR(config, ypd)};
 
         //计算新息协方差矩阵S
         Eigen::Matrix4d S {H * P * H.transpose() + R};
+        */
+        
+        Eigen::Matrix4d R {computeR(config, ypd)};
+        armor.testResult = associate(armor,z_pred,X,P,config,R);
         
         //kalman增益K
-        Eigen::MatrixXd K {P * H.transpose()*S.inverse()};
+        Eigen::MatrixXd K {P * armor.testResult.H.transpose()*armor.testResult.Sinv};
 
         //更新X，P
-        X += K * residual;
-        Eigen::MatrixXd IKH = Eigen::MatrixXd::Identity(9, 9) - K * H;//就是I-KH
+        X += K * armor.testResult.nu;
+        Eigen::MatrixXd IKH = Eigen::MatrixXd::Identity(9, 9) - K * armor.testResult.H;//就是I-KH
         P = IKH * P * IKH.transpose() + K * R * K.transpose(); 
     }
+
+
+
+
+
+
 }
 
 
