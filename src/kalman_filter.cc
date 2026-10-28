@@ -121,7 +121,7 @@ namespace kalfilter
 
         ObsAssociation associate 
         (const armerState& armor,
-        std::vector<kalfilter::armerState> obs_list,
+        std::vector<storedID> id_list,
         const Eigen::Matrix<double,9,1>& X,
         const Eigen::Matrix<double,9,9>& P,
         const KalmanConfig& config,
@@ -130,12 +130,15 @@ namespace kalfilter
             ObsAssociation best ;
 
             //如果EKF中没存上次的装甲板，就直接返回默认值
-            if (obs_list.empty()) return best;
+            if (id_list.empty()) return best;
 
-            for (int i{};i < obs_list.size();++i)
+            for (int i{};i < id_list.size();++i)
             {
+                //防止同一帧的上一个装甲板
+                if (!id_list[i].isThisFrame) continue;
+
                 // 欧氏的有关量的计算
-                Eigen::Matrix<double,4,1> h_id { observationModel(X, obs_list[i].testResult.id)};
+                Eigen::Matrix<double,4,1> h_id { observationModel(X, id_list[i].id)};
 
                 Eigen::Matrix<double,4,1> nu { armor.measurement - h_id };
                 nu(3) = wrap(nu(3));
@@ -145,7 +148,7 @@ namespace kalfilter
                 if (pos > config.assoc_pos_gate) continue;
 
                 // 马氏距离的有关量的计算
-                Eigen::Matrix<double,4,9> H_id { computeH(X, obs_list[i].testResult.id)};
+                Eigen::Matrix<double,4,9> H_id { computeH(X, id_list[i].id)};
                 Eigen::Matrix4d S = H_id * P * H_id.transpose() + R;
                 Eigen::Matrix4d Sinv_id { S.ldlt().solve(Eigen::Matrix4d::Identity()) };//ai非说inverse不安全，让我改
 
@@ -155,7 +158,7 @@ namespace kalfilter
                 if (d2 < best.d2) 
                 {
                 best.d2 = d2;
-                best.id = obs_list[i].testResult.id;
+                best.id = id_list[i].id;
                 best.nu = nu;
                 best.H = H_id;
                 best.Sinv = Sinv_id;
@@ -264,10 +267,12 @@ namespace kalfilter
 
         //判断armor的id，顺带算好H，nu（残差）,S^-1
         Eigen::Matrix4d R {computeR(config, ypd)};
-        armor.testResult = associate(armor,armor_pred,X,P,config,R);
+        armor.testResult = associate(armor,id_list,X,P,config,R);
 
         //把armor存起来，便于下一帧判断
-        armor_pred.push_back(armor);
+        storedID armorID ;
+        armorID.id = armor.testResult.id;
+        id_list.push_back(armorID);
         
         
         //kalman增益K
@@ -279,9 +284,15 @@ namespace kalfilter
         P = IKH * P * IKH.transpose() + K * R * K.transpose(); 
     }
 
-    void KalmanFilter::renewArmor ()
+    //这个是处理id_list的
+    void KalmanFilter::renewArmorList ()
     {
-        
+        if (id_list.empty()) return;
+        for (int i {};i < id_list.size();++i)
+        {
+            if (id_list[i].isThisFrame)id_list[i].isThisFrame=false;
+            else id_list.erase(id_list.begin()+i);
+        }
     }
 
 

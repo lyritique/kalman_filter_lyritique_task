@@ -58,6 +58,12 @@ struct armerState
   
 };
 
+struct storedID 
+{
+    int  id {};      // 1~4
+    bool isThisFrame =true;
+};
+
 class KalmanFilter
 {
     public:
@@ -67,7 +73,7 @@ class KalmanFilter
         void reset();
         void predict(const double& dt,const KalmanConfig& config);
         void update(armerState& armor ,const KalmanConfig& config ,const cam_ypd& ypd);
-        void renewArmor ();
+        void renewArmorList ();
     private:
         
         
@@ -77,7 +83,9 @@ class KalmanFilter
 
         bool initialized = false;
 
-        std::vector<kalfilter::armerState> armor_pred {};
+
+
+        std::vector<storedID> id_list {};
 
 
         
