@@ -54,7 +54,7 @@ struct armerState
 {
     Eigen::Matrix<double,4,1> measurement;
     kalfilter::ObsAssociation testResult;
-
+    bool isThisFrame = true;
   
 };
 
@@ -67,6 +67,7 @@ class KalmanFilter
         void reset();
         void predict(const double& dt,const KalmanConfig& config);
         void update(armerState& armor ,const KalmanConfig& config ,const cam_ypd& ypd);
+        void renewArmor ();
     private:
         
         
@@ -76,7 +77,7 @@ class KalmanFilter
 
         bool initialized = false;
 
-        std::vector<kalfilter::armerState> z_pred {};
+        std::vector<kalfilter::armerState> armor_pred {};
 
 
         

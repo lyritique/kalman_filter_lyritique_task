@@ -12,8 +12,14 @@ update  增益K=P*H^T*S^-1，  △X=K*y，  X^+=X_+△X
 */
 
 
-/*
-1.id没处理，感觉很复杂
+/* 任务表
+1. update() 传给 associate() 的 z_pred 从来没有被填充
+2. 初始化 ObsAssociation 的所有矩阵
+3.- 第一次 init() 需要明确的初始板 ID。当前用 testResult.id，默认是 -1
+4.- P.fill(0.1) 把协方差的非对角项全设成 0.1，不是初始方差。应清零后只设置对角线，例如位置、角度、速度、半径分别设合理方差
+5.- reset() 没有清理 F、z_pred 和上一板 ID
+6.未应用 9 ms offset
+
 
 
 
@@ -255,9 +261,14 @@ namespace kalfilter
         //计算新息协方差矩阵S
         Eigen::Matrix4d S {H * P * H.transpose() + R};
         */
-        
+
+        //判断armor的id，顺带算好H，nu（残差）,S^-1
         Eigen::Matrix4d R {computeR(config, ypd)};
-        armor.testResult = associate(armor,z_pred,X,P,config,R);
+        armor.testResult = associate(armor,armor_pred,X,P,config,R);
+
+        //把armor存起来，便于下一帧判断
+        armor_pred.push_back(armor);
+        
         
         //kalman增益K
         Eigen::MatrixXd K {P * armor.testResult.H.transpose()*armor.testResult.Sinv};
@@ -268,7 +279,10 @@ namespace kalfilter
         P = IKH * P * IKH.transpose() + K * R * K.transpose(); 
     }
 
-
+    void KalmanFilter::renewArmor ()
+    {
+        
+    }
 
 
 
