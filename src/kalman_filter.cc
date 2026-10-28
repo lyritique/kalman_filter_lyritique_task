@@ -15,10 +15,10 @@ update  增益K=P*H^T*S^-1，  △X=K*y，  X^+=X_+△X
 /* 任务表
 1. update() 传给 associate() 的 z_pred 从来没有被填充
 2. 初始化 ObsAssociation 的所有矩阵
-3.- 第一次 init() 需要明确的初始板 ID。当前用 testResult.id，默认是 -1
-4.- P.fill(0.1) 把协方差的非对角项全设成 0.1，不是初始方差。应清零后只设置对角线，例如位置、角度、速度、半径分别设合理方差
-5.- reset() 没有清理 F、z_pred 和上一板 ID
-6.未应用 9 ms offset
+3. 第一次 init() 需要明确的初始板 ID。当前用 testResult.id，默认是 -1
+4. P.fill(0.1) 把协方差的非对角项全设成 0.1，不是初始方差。应清零后只设置对角线，例如位置、角度、速度、半径分别设合理方差
+5. reset() 没有清理 F、z_pred 和上一板 ID
+6.- 未应用 9 ms offset
 
 
 
@@ -130,7 +130,11 @@ namespace kalfilter
             ObsAssociation best ;
 
             //如果EKF中没存上次的装甲板，就直接返回默认值
-            if (id_list.empty()) return best;
+            if (id_list.empty()) 
+            {
+                best.id = 0;
+                return best;
+            };
 
             for (int i{};i < id_list.size();++i)
             {
@@ -176,17 +180,19 @@ namespace kalfilter
         }
     }
     
-    void KalmanFilter::init(const armerState& measurement)
+    void KalmanFilter::init(armerState& measurement)
     {
+        measurement.testResult.id = 0;
         F.setIdentity();
         constexpr double radius = 0.26;
         X(8) = radius; //魔法数字
         const double c = measurement.testResult.id * kPI * 0.5;
         X(3) = measurement.measurement(3) - c;                         // 旋转角
-        X(1) = measurement.measurement(1);                               // 高度/该轴直接对应
+        X(1) = measurement.measurement(1);                             // 高度/该轴直接对应
         X(0) = measurement.measurement(0) - radius * std::sin(measurement.measurement(3));      // 由 y0 = X0 + X8·sin(yaw) 反解
         X(2) = measurement.measurement(2) - radius * std::cos(measurement.measurement(3));      // 由 y2 = X2 + X8·cos(yaw) 反解
-        P.fill(0.1);
+        P.setIdentity();
+        P *= 0.1 ;//ai说要写成单位的，不能直接fill，0.1后面填config处理
         initialized = true;
 
     }
@@ -197,6 +203,8 @@ namespace kalfilter
         initialized = false;
         X = Eigen::Matrix<double,9,1> {};
         P = Eigen::Matrix<double,9,9> {};
+        F = Eigen::Matrix<double,9,9> {};
+        id_list = std::vector<storedID> {};
     }
    
 

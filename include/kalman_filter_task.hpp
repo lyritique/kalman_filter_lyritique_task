@@ -45,9 +45,9 @@ struct ObsAssociation {
     int    id = -1;                            // 匹配到的 id
     double d2 = std::numeric_limits<double>::infinity();
     bool   valid = false;                      // 是否通过门限
-    Eigen::Matrix<double,4,1> nu;              // 残差（yaw 已 wrap）
-    Eigen::Matrix<double,4,9> H;               // 雅可比
-    Eigen::Matrix4d           Sinv;            // S 的逆，供更新复用
+    Eigen::Matrix<double,4,1> nu  {};              // 残差（yaw 已 wrap）
+    Eigen::Matrix<double,4,9> H   {};               // 雅可比
+    Eigen::Matrix4d           Sinv{};            // S 的逆，供更新复用
 };
 
 struct armerState 
@@ -69,7 +69,7 @@ class KalmanFilter
     public:
         explicit KalmanFilter(const KalmanConfig& config = KalmanConfig{});
 
-        void init(const armerState& measurement);
+        void init(armerState& measurement);
         void reset();
         void predict(const double& dt,const KalmanConfig& config);
         void update(armerState& armor ,const KalmanConfig& config ,const cam_ypd& ypd);
