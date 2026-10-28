@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 23)
 
 find_package(Eigen3 REQUIRED)
+find_package(OpenCV REQUIRED)
 
 add_executable(
     kalman_filter
