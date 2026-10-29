@@ -4,6 +4,7 @@
 # include <eigen3/Eigen/Eigen>
 
 
+
 /*
 EKF追踪X=(px,py,pz,yaw,vx,vy,vz,vyaw,r)
 predict X_=f(X),P_=F*P*F^T+Q ,F=f(X)一阶导
@@ -19,7 +20,12 @@ update  增益K=P*H^T*S^-1，  △X=K*y，  X^+=X_+△X
 4. P.fill(0.1) 把协方差的非对角项全设成 0.1，不是初始方差。应清零后只设置对角线，例如位置、角度、速度、半径分别设合理方差
 5. reset() 没有清理 F、z_pred 和上一板 ID
 6.- 未应用 9 ms offset
-
+7.id_list 只会存入已经匹配过的 ID。第一次永远只能尝试 ID 0，因此 ID 1/2/3 永远没有机会被选中：kalman_filter.cc (src/kalman_filter.cc:122)。
+8.每次更新都会向 id_list 追加一个 ID，造成重复项无限增长：kalman_filter.cc (src/kalman_filter.cc:280)。
+9.renewArmorList() 把所有条目设为无效，下一个循环又擦除，边擦边遍历，行为不可靠：kalman_filter.cc (src/kalman_filter.cc:296)。
+10.update() 没有检查是否已初始化、匹配是否通过门限。匹配失败仍会继续计算增益：kalman_filter.cc (src/kalman_filter.cc:256)。
+11.构造函数只有声明，没有实现；一旦 main 创建 KalmanFilter 就会链接失败。
+12.X/P 是私有的，也没有状态读取接口，main 拿不到估计结果。
 
 
 
@@ -119,13 +125,41 @@ namespace kalfilter
 
         }
 
+        
+        bool isNextArmor(const Eigen::Matrix<double,9,1>& X,int id,const armerState& armor,const KalmanConfig& config,
+            const Eigen::Matrix<double,9,9>& P,const Eigen::Matrix4d& R )
+        {
+            // 欧氏的有关量的计算
+                Eigen::Matrix<double,4,1> h_id { observationModel(X, id)};
+
+                Eigen::Matrix<double,4,1> nu { armor.measurement - h_id };
+                nu(3) = wrap(nu(3));
+
+                // 欧氏粗筛
+                const double pos = std::sqrt(nu(0)*nu(0)+nu(1)*nu(1)+nu(2)*nu(2));
+                if (pos > config.assoc_pos_gate) return false;;
+
+                // 马氏距离的有关量的计算
+                Eigen::Matrix<double,4,9> H_id { computeH(X, id)};
+                Eigen::Matrix4d S = H_id * P * H_id.transpose() + R;
+                Eigen::Matrix4d Sinv_id { S.ldlt().solve(Eigen::Matrix4d::Identity()) };//ai非说inverse不安全，让我改
+
+                //马氏距离
+                const double d2 = nu.transpose() * Sinv_id * nu;
+
+                if (d2 <= config.chi2_gate)return true;
+                else return false;;
+
+        }
+
         ObsAssociation associate 
         (const armerState& armor,
-        std::vector<storedID> id_list,
+        std::vector<storedID>& id_list,
         const Eigen::Matrix<double,9,1>& X,
         const Eigen::Matrix<double,9,9>& P,
         const KalmanConfig& config,
-        const Eigen::Matrix4d& R )
+        const Eigen::Matrix4d& R ,
+        int& max_id)
         {
             ObsAssociation best ;
 
@@ -171,6 +205,8 @@ namespace kalfilter
 
             if (best.d2 <= config.chi2_gate)
             {
+                if (isNextArmor(X,max_id+ 1,
+                        armor,config,P,R))
                 best.valid = true;
             }
 
@@ -178,7 +214,7 @@ namespace kalfilter
             
 
         }
-    }
+    }//namespace
     
     void KalmanFilter::init(armerState& measurement)
     {
@@ -275,7 +311,7 @@ namespace kalfilter
 
         //判断armor的id，顺带算好H，nu（残差）,S^-1
         Eigen::Matrix4d R {computeR(config, ypd)};
-        armor.testResult = associate(armor,id_list,X,P,config,R);
+        armor.testResult = associate(armor,id_list,X,P,config,R,max_id);
 
         //把armor存起来，便于下一帧判断
         storedID armorID ;
@@ -296,17 +332,22 @@ namespace kalfilter
     void KalmanFilter::renewArmorList ()
     {
         if (id_list.empty()) return;
-        for (int i {};i < id_list.size();++i)
-        {
-            if (id_list[i].isThisFrame)id_list[i].isThisFrame=false;
-            else id_list.erase(id_list.begin()+i);
-        }
+        
+        //删除上一帧
+        //erase-remove
+        id_list.erase(    
+            std::remove_if(id_list.begin(), id_list.end(),               
+                [](const auto& e) { return !e.isThisFrame; }),   
+            id_list.end());
+        //这一帧的改为下帧
+        for (auto& e :id_list)if (e.isThisFrame)e.isThisFrame=false;
+        
     }
 
 
 
 
-}
+}//namespace kalfilter
 
 
 

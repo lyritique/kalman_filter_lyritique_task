@@ -86,6 +86,7 @@ class KalmanFilter
 
 
         std::vector<storedID> id_list {};
+        int max_id {};
 
 
         

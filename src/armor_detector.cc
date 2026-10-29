@@ -297,6 +297,7 @@ void Detector::nms(ArmorDetections& detections, float iou_threshold) const
     std::vector<int> kept_indices;//此乃保留框的下标
 
     //此处可以距离初筛优化
+    //TODO:
     cv::dnn::NMSBoxes(
         boxes, scores, config_.score_threshold, iou_threshold, kept_indices);
 
@@ -308,4 +309,4 @@ void Detector::nms(ArmorDetections& detections, float iou_threshold) const
     }
     detections = std::move(kept);
 }
-}
+}//namespace detector
