@@ -13,7 +13,9 @@ add_executable(
     kalman_filter
     src/kalman_filter.cc
     src/imu_alignment.cc
+    src/armor_detector.cc
 )
 
-target_include_directories(kalman_filter PRIVATE include/)
-target_link_libraries(kalman_filter PRIVATE Eigen3::Eigen)
+target_include_directories(kalman_filter PRIVATE include/ ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(kalman_filter PRIVATE Eigen3::Eigen ${OpenCV_LIBS})
+

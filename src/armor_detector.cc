@@ -1,137 +1,311 @@
 # include "armor_detector.hpp"
 
+# include <algorithm>
+# include <cmath>
+#include <opencv2/core/types.hpp>
+# include <stdexcept>
+# include <utility>
 
+# include <opencv2/imgproc.hpp>
 
-
-
-
-bool loadYoloModel(const std::string& model_path, std::string& err)
+namespace detector {
+namespace
 {
-    if (!g_net.empty() && g_loaded_path == model_path) return true;
+    constexpr int kKeypointCount = 4;
+    constexpr int kKeypointValues = kKeypointCount * 2;
 
+    // 当前模型约定：HERO 和 BASE_B 使用大装甲板
+    constexpr int kHeroClass = 1;
+    constexpr int kBaseBottomClass = 7;
+}
+
+
+Detector::Detector(const DetectorConfig& config)
+    : config_(config)
+{
+    //检查配置对不对
+    if (config_.model_path.empty())
+    {
+        throw std::invalid_argument("Detector: 模型路径不能为空");
+    }
+    if (config_.input_width <= 0 || config_.input_height <= 0)
+    {
+        throw std::invalid_argument("Detector: 输入尺寸必须大于 0");
+    }
+    if (config_.num_color <= 0 || config_.num_class <= 0)
+    {
+        throw std::invalid_argument("Detector: 颜色数和类别数必须大于 0");
+    }
+    if (config_.ignore_color < -1 || config_.ignore_color >= config_.num_color)
+    {
+        throw std::invalid_argument("Detector: ignore_color 超出颜色分支范围");
+    }
+
+    //启动model
     try
     {
-        g_net = cv::dnn::readNetFromONNX(model_path);
-        g_loaded_path = model_path;
-        std::cout << "YOLO 模型已加载: " << model_path << "\n";
-        return true;
+        net_ = cv::dnn::readNetFromONNX(config_.model_path);
     }
     catch (const cv::Exception& e)
     {
-        err = std::string("模型加载失败：") + e.what();
-        if (err.find("FLOAT16") != std::string::npos)
-        {
-            err += "\n提示：这个 onnx 是 FP16 权重，OpenCV 4.5.4 的 dnn 不支持。\n"
-                   "     先跑：python3 scripts/convert_onnx_fp16_to_fp32.py "
-                   "YOLO_approach/models/Infantry.onnx\n"
-                   "     然后在 models/ 下得到 Infantry_fp32.onnx，程序会自动优先用它。";
-        }
-        return false;
+        throw std::runtime_error("Detector: 加载 ONNX 模型失败: " +
+                                 config_.model_path + "\n" + e.what());
+    }
+
+    if (net_.empty())
+    {
+        throw std::runtime_error("Detector: ONNX 模型为空: " + config_.model_path);
     }
 }
 
 
-
-std::vector<YoloDetection> detectArmorsYolo(const cv::Mat& bgr, const YoloCfg& cfg)
+Detector::Blob Detector::makeBlob(const cv::Mat& bgr) const
 {
-    std::vector<YoloDetection> result;
-    if (bgr.empty() || g_net.empty()) return result;
+    Blob input;                                                                                                        //没人觉得在这个函数了应该叫output吗
 
-    const Input in = makeBlob(bgr, cfg);
-    if (in.blob.empty() || in.info.scale <= 0.0f) return result;
+    //宽、高方向各算一个缩放比例，取较小的那个，不用头脑风暴长宽比比较
+    const float scale_x = static_cast<float>(config_.input_width) / bgr.cols;
+    const float scale_y = static_cast<float>(config_.input_height) / bgr.rows;
+    input.info.scale = std::min(scale_x, scale_y);
 
-    cv::Mat out;
+    const int resized_width = std::max(
+        1, std::min(config_.input_width,
+        static_cast<int>(std::lround(bgr.cols * input.info.scale))));
+    const int resized_height = std::max(
+        1, std::min(config_.input_height,
+        static_cast<int>(std::lround(bgr.rows * input.info.scale))));
+
+    input.info.pad_x = (config_.input_width - resized_width) / 2;
+    input.info.pad_y = (config_.input_height - resized_height) / 2;
+
+    //仿射变换
+    cv::Mat resized;
+    //x' = s * x + tx
+    //y' = s * y + ty
+
+    /*
+    //有resize函数为什么要手敲代码
+    const float tx = (config_.input_width  - bgr.cols * input.info.scale) * 0.5f;
+    const float ty = (config_.input_height - bgr.rows * input.info.scale) * 0.5f;
+
+    cv::Mat M = (cv::Mat_<float>(2, 3) <<
+    input.info.scale, 0.f,              tx,
+    0.f,              input.info.scale, ty);
+
+    cv::warpAffine(
+    bgr,
+    resized,
+    M,
+    cv::Size(config_.input_width, config_.input_height),
+    cv::INTER_LINEAR,
+    cv::BORDER_CONSTANT,
+    cv::Scalar(114, 114, 114)); 
+    */
+    
+    cv::resize(bgr, resized, cv::Size(resized_width, resized_height),
+               0.0, 0.0, cv::INTER_LINEAR);
+
+    //使用与训练一致的灰边填充
+    cv::Mat canvas;
+    cv::copyMakeBorder(
+        resized, canvas,
+        input.info.pad_y, config_.input_height - resized_height - input.info.pad_y,
+        input.info.pad_x, config_.input_width - resized_width - input.info.pad_x,
+        cv::BORDER_CONSTANT, cv::Scalar(124, 124, 124));
+
+    //OpenCV 的 BGR 转成模型训练时使用的 RGB
+    //输出布局为 NCHW、CV_32F，并在这里完成 1/255 归一化
+    cv::dnn::blobFromImage(
+        canvas, input.blob, 1.0 / 255.0,
+        cv::Size(config_.input_width, config_.input_height),
+        cv::Scalar(), true, false, CV_32F);
+
+    return input;
+}
+
+
+ArmorDetections Detector::detect(const cv::Mat& bgr)
+{
+    ArmorDetections detections;
+    if (bgr.empty()) return detections;
+
+    if (bgr.type() != CV_8UC3)
+    {
+        throw std::invalid_argument("Detector::detect 需要 CV_8UC3 的 BGR 图像");
+    }
+
+    const Blob input = makeBlob(bgr);
+    if (input.blob.empty() || input.info.scale <= 0.0f) return detections;
+
+    cv::Mat output;
     try
     {
-        g_net.setInput(in.blob);
-        out = g_net.forward();          // 期望 [1,21,6300]
+        net_.setInput(input.blob);
+        output = net_.forward();  // 当前模型输出形状为 [1, 21, 6300]
     }
     catch (const cv::Exception& e)
     {
-        std::cerr << "YOLO 前向失败: " << e.what() << "\n";
-        return result;
+        throw std::runtime_error(
+            std::string("Detector: YOLO 前向推理失败: ") + e.what());
     }
 
-    // 通道 = 颜色数 + 类别数 + 4x2 关键点（模型契约，不随配置乱改）
-    const int expect_ch = cfg.num_color + cfg.num_cls + 8;
-    if (out.dims != 3 || out.size[1] != expect_ch)
+    decode(output, input, bgr.cols, bgr.rows, detections);
+    nms(detections, config_.nms_threshold);
+    return detections;
+}
+
+
+void Detector::decode(const cv::Mat& output, const Blob& input, int image_width,
+                      int image_height, ArmorDetections& detections) const
+{
+    const int expected_channels =
+        config_.num_color + config_.num_class + kKeypointValues;
+
+    if (output.dims != 3 || output.size[0] != 1 ||
+        output.size[1] != expected_channels)
     {
-        std::cerr << "YOLO 输出形状不对，期望通道数 " << expect_ch << "，实际 "
-                  << (out.dims == 3 ? out.size[1] : -1) << "\n";
-        return result;
+        const int actual_channels =
+            output.dims == 3 ? output.size[1] : -1;
+        throw std::runtime_error(
+            "Detector: 模型输出形状错误，期望通道数 " +
+            std::to_string(expected_channels) + "，实际 " +
+            std::to_string(actual_channels));
     }
 
-    const int num_ch = out.size[1];
-    const int num_c  = out.size[2];     // 6300 = 80x60 + 40x30 + 20x15
-    const int kp_off = cfg.num_color + cfg.num_cls; // 关键点起始通道（本模型 = 13）
+    const int candidate_count = output.size[2];
+    const int class_offset = config_.num_color;
+    const int keypoint_offset = config_.num_color + config_.num_class;
 
-    // 输出是"通道优先"布局：element(通道 f, 候选 c) = data[c + f * num_c]
-    // 展平成一维视图，避免 3 维下标写错
-    const cv::Mat flat = out.reshape(1, 1);
-    const float* data = flat.ptr<float>(0);
-    auto at = [&](int f, int c) { return data[c + f * num_c]; };
-
-    const float kConf = cfg.conf;
-    std::vector<YoloDetection> candidates;
-
-    for (int c = 0; c < num_c; ++c)
+    //feature(f, c) = data[c + f * candidate_count]
+    //用feature()指针读取
+    /*const cv::Mat flat = output.reshape(1, 1);
+    const float* data = flat.ptr<float>(0);*/
+    const float* data = output.ptr<float>(0);
+    const auto feature = [&](int channel, int candidate)
     {
-        // 9 个类别得分取最大（输出已经 sigmoid 过，没有 objectness 通道）
-        float best_score = 0.0f;
-        int   best_cls   = -1;
-        for (int k = 0; k < cfg.num_cls; ++k)
-        {
-            const float s = at(4 + k, c);
-            if (s > best_score) { best_score = s; best_cls = k; }
-        }
-        if (best_score < kConf) continue;
+        return data[candidate + channel * candidate_count];
+    };
 
-        // 颜色：前 4 行取最大
-        int   color      = 0;
-        float best_color = at(0, c);
-        for (int k = 1; k < cfg.num_color; ++k)
-        {
-            const float s = at(k, c);
-            if (s > best_color) { best_color = s; color = k; }
-        }
+    ArmorDetections candidates;
+    candidates.reserve(static_cast<std::size_t>(candidate_count*0.1));
 
-        // 4 个关键点：letterbox 坐标 -> 原图坐标
-        std::vector<cv::Point2f> kp(4);
-        for (int i = 0; i < 4; ++i)
-        {
-            const float x = at(kp_off + 2 * i,     c);
-            const float y = at(kp_off + 2 * i + 1, c);
-            kp[i].x = (x - in.info.pad_x) / in.info.scale;
-            kp[i].y = (y - in.info.pad_y) / in.info.scale;
-        }
-
-        const cv::Rect2f box = cv::boundingRect(kp);
-        // 越界的点丢弃（说明这个候选不可靠）
-        if (box.x < 0 || box.y < 0 ||
-            box.x + box.width > bgr.cols || box.y + box.height > bgr.rows) continue;
-
-        YoloDetection d;
-        d.keypoints = kp;
-        d.box       = box;
-        d.color     = color;
-        d.cls       = best_cls;
-        d.score     = best_score;
-        candidates.push_back(d);
-    }
-
-    // NMS：同一块装甲板经常出 2~3 个重复候选，不做会满屏重复框
-    std::vector<cv::Rect> boxes;
-    std::vector<float>    scores;
-    for (const auto& d : candidates)
+    for (int candidate {}; candidate < candidate_count; ++candidate)
     {
-        boxes.push_back(cv::Rect(d.box));
-        scores.push_back(d.score);
+        //类别分支取最大值，当作当前候选的类别和置信度
+        int number {};
+        float best_score = feature(class_offset, candidate);
+        //打擂台
+        for (int cls = 1; cls < config_.num_class; ++cls)
+        {
+            const float score = feature(class_offset + cls, candidate);
+            if (score > best_score)
+            {
+                best_score = score;
+                number = cls;
+            }
+        }
+        //剔除置信不够的
+        if (best_score < config_.score_threshold) continue;
+
+        //从颜色行中取最大值
+        int color {};
+        float best_color_score = feature(0, candidate);
+        for (int current_color = 1; current_color < config_.num_color; ++current_color)
+        {
+            const float score = feature(current_color, candidate);
+            if (score > best_color_score)
+            {
+                best_color_score = score;
+                color = current_color;
+            }
+        }
+        //去除紫色和标明去除的颜色
+        if (config_.ignore_purple && color == 3) continue;
+        if (config_.ignore_color >= 0 && color == config_.ignore_color) continue;
+
+        //四个关键点从 letterbox 坐标还原到原图坐标
+        ArmorDetection detection;
+        bool valid = true;
+        for (int keypoint {}; keypoint < kKeypointCount; ++keypoint)
+        {
+            const float x = feature(keypoint_offset + 2 * keypoint, candidate);
+            const float y = feature(keypoint_offset + 2 * keypoint + 1, candidate);
+            if (!std::isfinite(x) || !std::isfinite(y))
+            {
+                valid = false;
+                break;
+            }
+
+            detection.corners[keypoint].x =
+                (x - static_cast<float>(input.info.pad_x)) / input.info.scale;
+            detection.corners[keypoint].y =
+                (y - static_cast<float>(input.info.pad_y)) / input.info.scale;
+
+            // 任意关键点越界，都说明这个候选不完整，直接丢弃
+            if (detection.corners[keypoint].x < 0.0f ||
+                detection.corners[keypoint].y < 0.0f ||
+                detection.corners[keypoint].x >= static_cast<float>(image_width) ||
+                detection.corners[keypoint].y >= static_cast<float>(image_height))
+            {
+                valid = false;
+                break;
+            }
+        }
+        if (!valid) continue;
+
+        //生成斜矩形框，用来nms和center,height,width
+        //不要用它的点。由于angle不定，点的顺序无法保证
+        detection.box = cv::minAreaRect(detection.corners);   // 成员改成 cv::RotatedRect rrect;
+
+        if (detection.box.size.height <= 0.0f || detection.box.size.width <= 0.0f) continue;
+
+        //包装
+        detection.score = best_score;
+        detection.color = color;
+        detection.number = number;
+        detection.big = (number == kHeroClass || number == kBaseBottomClass);
+        candidates.push_back(detection);
     }
 
-    std::vector<int> keep;
-    cv::dnn::NMSBoxes(boxes, scores, kConf, cfg.nms, keep);
+    detections = std::move(candidates);//整体替换，不用写清除
+}
 
-    result.reserve(keep.size());
-    for (int i : keep) result.push_back(candidates[i]);
-    return result;
+
+void Detector::nms(ArmorDetections& detections, float iou_threshold) const
+{
+    if (detections.empty()) return;
+
+    // 先按分数从高到低排序，NMS 只保留高分框
+    std::sort(
+        detections.begin(), detections.end(),
+        [](const ArmorDetection& left, const ArmorDetection& right)
+        {
+            return left.score > right.score;
+        });
+
+    std::vector<cv::RotatedRect> boxes;
+    std::vector<float> scores;
+    boxes.reserve(detections.size());
+    scores.reserve(detections.size());
+
+    for (const ArmorDetection& detection : detections)
+    {
+        boxes.push_back(detection.box);
+        scores.push_back(detection.score);
+    }
+
+    std::vector<int> kept_indices;//此乃保留框的下标
+
+    //此处可以距离初筛优化
+    cv::dnn::NMSBoxes(
+        boxes, scores, config_.score_threshold, iou_threshold, kept_indices);
+
+    ArmorDetections kept;
+    kept.reserve(kept_indices.size());
+    for (int index : kept_indices)
+    {
+        kept.push_back(std::move(detections[index]));
+    }
+    detections = std::move(kept);
+}
 }
