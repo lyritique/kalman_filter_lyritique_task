@@ -218,7 +218,12 @@ namespace kalfilter
         }
     }//namespace
     
-
+    KalmanFilter::KalmanFilter(const KalmanConfig&)
+    {
+        reset();
+        F.setIdentity();
+    }
+    
     void KalmanFilter::init(armerState& measurement)
     {
         measurement.testResult.id = 0;
