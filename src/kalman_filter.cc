@@ -73,7 +73,7 @@ namespace kalfilter
             const double co = std::cos(theta);
             const double r = X_(8);
 
-            Eigen::Matrix<double,4,9> J {};
+            Eigen::Matrix<double,4,9> J {Eigen::Matrix<double,4,9>::Zero()};
         
 
             J(0,0) = 1.0;
@@ -105,7 +105,7 @@ namespace kalfilter
             z = dist · cos(ele) · cos(azi)       前（光轴）
             yaw无变换
             */
-            Eigen::Matrix4d J {};
+            Eigen::Matrix4d J {Eigen::Matrix4d::Zero()};
             J.row(0) =  Eigen::Vector4d(ypd.dist*c_e*c_a,  -ypd.dist*s_e*s_a,  c_e*s_a,0.0);      
             J.row(1) =  Eigen::Vector4d(0.0,               ypd.dist*c_e,       s_e    ,0.0);      
             J.row(2) =  Eigen::Vector4d(-ypd.dist*c_e*s_a, -ypd.dist*s_e*c_a,  c_e*c_a,0.0);
@@ -148,9 +148,9 @@ namespace kalfilter
                 id_list.push_back(storedID {});
             };
 
-            auto isSameArmor = [&](int i)
+            auto isSameArmor = [&](int id)
             {
-                h_id = observationModel(X, id_list[i].id);
+                h_id = observationModel(X, id);
 
                 // 欧氏的有关量的计算
                 nu = armor.measurement - h_id ;
@@ -161,14 +161,14 @@ namespace kalfilter
                 if (pos > config.assoc_pos_gate) return false;;
 
                 // 马氏距离的有关量的计算
-                H_id = computeH(X, id_list[i].id);
+                H_id = computeH(X, id);
                 Eigen::Matrix4d S = H_id * P * H_id.transpose() + R;
                 Sinv_id = S.ldlt().solve(Eigen::Matrix4d::Identity()) ;//ai非说inverse不安全，让我改
 
                 //马氏距离
                 d2 = nu.transpose() * Sinv_id * nu;
 
-                if (d2 <= config.chi2_gate * 2) return true;
+                if (d2 <= config.chi2_gate ) return true;
                 else return false;
                 
             };
@@ -178,7 +178,7 @@ namespace kalfilter
                 //防止同一帧的上一个装甲板
                 if (id_list[i].isThisFrame) continue;
 
-                if (!isSameArmor(i)) continue;
+                if (!isSameArmor(id_list[i].id)) continue;
 
                 if (d2 < best.d2) 
                 {
@@ -190,17 +190,23 @@ namespace kalfilter
                 }
             }
 
+            int next_id {max_id + 1};
+          
+            
+            
+
             if (best.d2 >= config.chi2_gate)
             {
-                if (isSameArmor(max_id+ 1) && d2 < config.chi2_gate)
+                if (isSameArmor(next_id) && d2 < config.chi2_gate)
                     {
-                        max_id += 1;
+                        if (next_id ==4) next_id=0 ;
+                        max_id  = next_id;
                         best.d2 = d2;
                         best.id = max_id;
                         best.nu = nu;
                         best.H = H_id;
                         best.Sinv = Sinv_id;
-
+                        best.valid=true;
                     }
                 else best.valid = false;
             }
@@ -212,11 +218,13 @@ namespace kalfilter
         }
     }//namespace
     
+
     void KalmanFilter::init(armerState& measurement)
     {
         measurement.testResult.id = 0;
         F.setIdentity();
         constexpr double radius = 0.26;
+        X.setZero();
         X(8) = radius; //魔法数字
         const double c = measurement.testResult.id * kPI * 0.5;
         X(3) = measurement.measurement(3) - c;                         // 旋转角
@@ -233,10 +241,11 @@ namespace kalfilter
     void KalmanFilter::reset()
     {
         initialized = false;
-        X = Eigen::Matrix<double,9,1> {};
-        P = Eigen::Matrix<double,9,9> {};
-        F = Eigen::Matrix<double,9,9> {};
-        id_list = std::vector<storedID> {};
+        X.setZero() ;
+        P.setZero() ;
+        F.setZero() ;
+        id_list.clear() ;
+        max_id =0;
     }
    
 
@@ -258,7 +267,7 @@ namespace kalfilter
 
         //分段白噪声模型制造Q
         //模型中目标的加速度是一个分段常数，在每一段内以为白噪声形式随机变化
-        Eigen::Matrix<double, 9, 9> Q {};
+        Eigen::Matrix<double, 9, 9> Q {Eigen::Matrix<double,9,9>::Zero()};
         const double dt2 = dt * dt;
         const double dt3 = dt2 * dt;
         const double dt4 = dt2 * dt2;
@@ -318,6 +327,7 @@ namespace kalfilter
         //把armor存起来，便于下一帧判断
         storedID armorID ;
         armorID.id = armor.testResult.id;
+        armorID.isThisFrame = true;
         id_list.push_back(armorID);
         
         

@@ -54,14 +54,12 @@ struct armerState
 {
     Eigen::Matrix<double,4,1> measurement;
     kalfilter::ObsAssociation testResult;
-    bool isThisFrame = true;
-  
 };
 
 struct storedID 
 {
     int  id {};      // 0~3
-    bool isThisFrame =true;
+    bool isThisFrame =false;
 };
 
 class KalmanFilter
