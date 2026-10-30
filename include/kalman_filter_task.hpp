@@ -60,7 +60,7 @@ struct armerState
 
 struct storedID 
 {
-    int  id {};      // 1~4
+    int  id {};      // 0~3
     bool isThisFrame =true;
 };
 
@@ -73,6 +73,7 @@ class KalmanFilter
         void reset();
         void predict(const double& dt,const KalmanConfig& config);
         void update(armerState& armor ,const KalmanConfig& config ,const cam_ypd& ypd);
+        //这个是每一帧的结束处理id_list的
         void renewArmorList ();
     private:
         

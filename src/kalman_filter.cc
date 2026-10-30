@@ -14,16 +14,16 @@ update  增益K=P*H^T*S^-1，  △X=K*y，  X^+=X_+△X
 
 
 /* 任务表
-1. update() 传给 associate() 的 z_pred 从来没有被填充
-2. 初始化 ObsAssociation 的所有矩阵
-3. 第一次 init() 需要明确的初始板 ID。当前用 testResult.id，默认是 -1
-4. P.fill(0.1) 把协方差的非对角项全设成 0.1，不是初始方差。应清零后只设置对角线，例如位置、角度、速度、半径分别设合理方差
-5. reset() 没有清理 F、z_pred 和上一板 ID
+1. /update() 传给 associate() 的 z_pred 从来没有被填充
+2. /初始化 ObsAssociation 的所有矩阵
+3. /第一次 init() 需要明确的初始板 ID。当前用 testResult.id，默认是 -1
+4. /P.fill(0.1) 把协方差的非对角项全设成 0.1，不是初始方差。应清零后只设置对角线，例如位置、角度、速度、半径分别设合理方差
+5. /reset() 没有清理 F、z_pred 和上一板 ID
 6.- 未应用 9 ms offset
-7.id_list 只会存入已经匹配过的 ID。第一次永远只能尝试 ID 0，因此 ID 1/2/3 永远没有机会被选中：kalman_filter.cc (src/kalman_filter.cc:122)。
-8.每次更新都会向 id_list 追加一个 ID，造成重复项无限增长：kalman_filter.cc (src/kalman_filter.cc:280)。
-9.renewArmorList() 把所有条目设为无效，下一个循环又擦除，边擦边遍历，行为不可靠：kalman_filter.cc (src/kalman_filter.cc:296)。
-10.update() 没有检查是否已初始化、匹配是否通过门限。匹配失败仍会继续计算增益：kalman_filter.cc (src/kalman_filter.cc:256)。
+7. /id_list 只会存入已经匹配过的 ID。第一次永远只能尝试 ID 0，因此 ID 1/2/3 永远没有机会被选中：kalman_filter.cc (src/kalman_filter.cc:122)。
+8. /每次更新都会向 id_list 追加一个 ID，造成重复项无限增长：kalman_filter.cc (src/kalman_filter.cc:280)。
+9. /renewArmorList() 把所有条目设为无效，下一个循环又擦除，边擦边遍历，行为不可靠：kalman_filter.cc (src/kalman_filter.cc:296)。
+10. /update() 没有检查是否已初始化、匹配是否通过门限。匹配失败仍会继续计算增益：kalman_filter.cc (src/kalman_filter.cc:256)。
 11.构造函数只有声明，没有实现；一旦 main 创建 KalmanFilter 就会链接失败。
 12.X/P 是私有的，也没有状态读取接口，main 拿不到估计结果。
 
@@ -125,32 +125,6 @@ namespace kalfilter
 
         }
 
-        
-        bool isNextArmor(const Eigen::Matrix<double,9,1>& X,int id,const armerState& armor,const KalmanConfig& config,
-            const Eigen::Matrix<double,9,9>& P,const Eigen::Matrix4d& R )
-        {
-            // 欧氏的有关量的计算
-                Eigen::Matrix<double,4,1> h_id { observationModel(X, id)};
-
-                Eigen::Matrix<double,4,1> nu { armor.measurement - h_id };
-                nu(3) = wrap(nu(3));
-
-                // 欧氏粗筛
-                const double pos = std::sqrt(nu(0)*nu(0)+nu(1)*nu(1)+nu(2)*nu(2));
-                if (pos > config.assoc_pos_gate) return false;;
-
-                // 马氏距离的有关量的计算
-                Eigen::Matrix<double,4,9> H_id { computeH(X, id)};
-                Eigen::Matrix4d S = H_id * P * H_id.transpose() + R;
-                Eigen::Matrix4d Sinv_id { S.ldlt().solve(Eigen::Matrix4d::Identity()) };//ai非说inverse不安全，让我改
-
-                //马氏距离
-                const double d2 = nu.transpose() * Sinv_id * nu;
-
-                if (d2 <= config.chi2_gate)return true;
-                else return false;;
-
-        }
 
         ObsAssociation associate 
         (const armerState& armor,
@@ -162,36 +136,49 @@ namespace kalfilter
         int& max_id)
         {
             ObsAssociation best ;
+            Eigen::Matrix<double,4,1> h_id {};
+            Eigen::Matrix<double,4,1> nu {};
+            Eigen::Matrix<double,4,9> H_id {};
+            Eigen::Matrix4d Sinv_id {};
+            double d2 {};
 
-            //如果EKF中没存上次的装甲板，就直接返回默认值
+            //如果EKF中没存上次的装甲板，就直接加一个默认值
             if (id_list.empty()) 
             {
-                best.id = 0;
-                return best;
+                id_list.push_back(storedID {});
+            };
+
+            auto isSameArmor = [&](int i)
+            {
+                h_id = observationModel(X, id_list[i].id);
+
+                // 欧氏的有关量的计算
+                nu = armor.measurement - h_id ;
+                nu(3) = wrap(nu(3));
+
+                // 欧氏粗筛
+                const double pos = std::sqrt(nu(0)*nu(0)+nu(1)*nu(1)+nu(2)*nu(2));
+                if (pos > config.assoc_pos_gate) return false;;
+
+                // 马氏距离的有关量的计算
+                H_id = computeH(X, id_list[i].id);
+                Eigen::Matrix4d S = H_id * P * H_id.transpose() + R;
+                Sinv_id = S.ldlt().solve(Eigen::Matrix4d::Identity()) ;//ai非说inverse不安全，让我改
+
+                //马氏距离
+                d2 = nu.transpose() * Sinv_id * nu;
+
+                if (d2 <= config.chi2_gate * 2) return true;
+                else return false;
+                
             };
 
             for (int i{};i < id_list.size();++i)
             {
                 //防止同一帧的上一个装甲板
-                if (!id_list[i].isThisFrame) continue;
+                if (id_list[i].isThisFrame) continue;
 
-                // 欧氏的有关量的计算
-                Eigen::Matrix<double,4,1> h_id { observationModel(X, id_list[i].id)};
-
-                Eigen::Matrix<double,4,1> nu { armor.measurement - h_id };
-                nu(3) = wrap(nu(3));
-
-                // 欧氏粗筛
-                const double pos = std::sqrt(nu(0)*nu(0)+nu(1)*nu(1)+nu(2)*nu(2));
-                if (pos > config.assoc_pos_gate) continue;
-
-                // 马氏距离的有关量的计算
-                Eigen::Matrix<double,4,9> H_id { computeH(X, id_list[i].id)};
-                Eigen::Matrix4d S = H_id * P * H_id.transpose() + R;
-                Eigen::Matrix4d Sinv_id { S.ldlt().solve(Eigen::Matrix4d::Identity()) };//ai非说inverse不安全，让我改
-
-                //马氏距离
-                const double d2 = nu.transpose() * Sinv_id * nu;
+                if (!isSameArmor(i)) continue;
 
                 if (d2 < best.d2) 
                 {
@@ -203,12 +190,21 @@ namespace kalfilter
                 }
             }
 
-            if (best.d2 <= config.chi2_gate)
+            if (best.d2 >= config.chi2_gate)
             {
-                if (isNextArmor(X,max_id+ 1,
-                        armor,config,P,R))
-                best.valid = true;
+                if (isSameArmor(max_id+ 1) && d2 < config.chi2_gate)
+                    {
+                        max_id += 1;
+                        best.d2 = d2;
+                        best.id = max_id;
+                        best.nu = nu;
+                        best.H = H_id;
+                        best.Sinv = Sinv_id;
+
+                    }
+                else best.valid = false;
             }
+            else best.valid=true;
 
             return best;
             
@@ -309,9 +305,15 @@ namespace kalfilter
         Eigen::Matrix4d S {H * P * H.transpose() + R};
         */
 
+        //检查初始化
+        if (!initialized) return;
+
         //判断armor的id，顺带算好H，nu（残差）,S^-1
         Eigen::Matrix4d R {computeR(config, ypd)};
         armor.testResult = associate(armor,id_list,X,P,config,R,max_id);
+
+        //检查是否过了匹配
+        if (!armor.testResult.valid)return;
 
         //把armor存起来，便于下一帧判断
         storedID armorID ;
@@ -328,7 +330,7 @@ namespace kalfilter
         P = IKH * P * IKH.transpose() + K * R * K.transpose(); 
     }
 
-    //这个是处理id_list的
+    //这个是每一帧的结束处理id_list的
     void KalmanFilter::renewArmorList ()
     {
         if (id_list.empty()) return;
