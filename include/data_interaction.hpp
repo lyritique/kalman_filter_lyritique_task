@@ -70,6 +70,7 @@ struct PnPResult
 {
     bool valid = false;
     Eigen::Matrix<double, 4, 1> measurement {};
+    double err {};
 };
 
 
@@ -96,6 +97,9 @@ class pnpSolver
 
     cv::Mat camera_matrix_{};
     cv::Mat distortion_coeffs_;
+
+    double proj_err {};
+
 
 };
 

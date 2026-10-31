@@ -111,6 +111,7 @@ void pnpSolver::easySolver()
     const double yaw = std::atan2(nx, nz);
 
     output << tx, ty, tz, yaw;
+    proj_err = best_err ;
     output_valid_ = true;
 
 
@@ -127,6 +128,7 @@ PnPResult pnpSolver::getOutput()
     PnPResult result;
     result.valid = output_valid_;
     result.measurement = output;
+    result.err = proj_err ;
     return result;
 }
 }

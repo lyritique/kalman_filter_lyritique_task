@@ -103,6 +103,7 @@ int main(int argc, char** argv)
     {
         auto detections = detector.detect(frame);
         Eigen::Matrix<double,4,1> best {};
+        double err {};
 
         for (auto detection:detections)
         {
@@ -114,7 +115,7 @@ int main(int argc, char** argv)
         
             //这里写检测
             //这里的检测应该要挑出最好的
-            best = {};
+            if (pose.err < err)   best = pose.measurement;
         }
             //ekf的input
             kalfilter::armerState efk_input{};
@@ -124,13 +125,13 @@ int main(int argc, char** argv)
     }
     
     //用上面的数据构建输出video的writer
-    cv::VideoWriter writer(output_path + "output_video.avi", 
+    cv::VideoWriter writer(output_path + "/output_video.avi", 
         cv::VideoWriter::fourcc('M','J','P','G'),fps, frameSize);
     if (!writer.isOpened()) throw std::runtime_error("无法创建输出视频");
 
     
     //CSV的创建
-    std::ofstream csv (output_path + "output/data.csv");
+    std::ofstream csv (output_path + "/output/data.csv");
     if (!csv) throw std::runtime_error("csv无法创建。");
     csv << "time,valid,px,py,pz,yaw,vx,vy,vz,vyaw,r\r\n";
     
@@ -148,11 +149,12 @@ int main(int argc, char** argv)
     {
         //处理时间
         const double image_time {video_start_time + frame_index / fps};
-        const double dt {has_previous_time ? image_time-previous_image_time : image_time};
+        const double dt {image_time-previous_image_time};
         previous_image_time = image_time;
         const kalfilter::imu cam_imu {kalfilter::alignImuToImage (imu_data,image_time)};
 
-        ekf.predict(dt);
+        if (has_previous_time) ekf.predict(dt);
+        has_previous_time = true;
 
         cap.read(frame);
         auto detections = detector.detect(frame);
@@ -181,7 +183,7 @@ int main(int argc, char** argv)
         auto output { ekf.getOutput()};
 
         //csv输入
-        if (output.valid)csv << image_time << "偏离过大";//多次偏离应该reset，但还未写
+        if (!output.valid)csv << image_time << "偏离过大";//多次偏离应该reset，但还未写
         else csv << image_time << output.state;
 
         //这里draw数据
