@@ -62,6 +62,13 @@ struct storedID
     bool isThisFrame =false;
 };
 
+struct KFResult
+{
+    //px, py, pz, yaw, vx, vy, vz, vyaw, r
+    Eigen::Matrix<double, 9, 1> state =Eigen::Matrix<double, 9, 1>::Zero();
+    bool valid = false;
+};
+
 class KalmanFilter
 {
     public:
@@ -73,6 +80,7 @@ class KalmanFilter
         void update(armerState& armor ,const KalmanConfig& config ,const cam_ypd& ypd);
         //这个是每一帧的结束处理id_list的
         void renewArmorList ();
+        KFResult getOutput() const;
     private:
         
         

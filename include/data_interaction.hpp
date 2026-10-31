@@ -54,7 +54,7 @@ struct pnpConfig
            -0.0038352945867108721, -0.0020421443354436304, 0.0};
     };
 
-    static const constexpr double max_reproj_err {1.0};                                                     //戴帽子大师
+    static const constexpr double max_reproj_err {3.0};                                                     //戴帽子大师
 
 
 
@@ -80,12 +80,14 @@ class pnpSolver
 {
     public:
     //构造函数（未写）
-
+    explicit pnpSolver();
+    void input (const std::array<cv::Point2f, 4>& image_corners, bool big);
     void easySolver();
     PnPResult getOutput();
     private:
 
-    Eigen::Matrix<double,4,1> output {};
+    Eigen::Matrix<double,4,1> output = Eigen::Matrix<double, 4, 1>::Zero();
+    bool output_valid_ = false;
     std::vector<cv::Point2d> corners {};
 
     pnpConfig config {};

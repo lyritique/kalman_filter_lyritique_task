@@ -14,6 +14,9 @@ add_executable(
     src/kalman_filter.cc
     src/imu_alignment.cc
     src/armor_detector.cc
+    src/main.cc
+    src/data_interaction.cc
+    src/draw.cc
 )
 
 target_include_directories(kalman_filter PRIVATE include/ ${OpenCV_INCLUDE_DIRS})

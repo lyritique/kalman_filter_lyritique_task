@@ -223,7 +223,7 @@ namespace kalfilter
         reset();
         F.setIdentity();
     }
-    
+
     void KalmanFilter::init(armerState& measurement)
     {
         measurement.testResult.id = 0;
@@ -361,7 +361,21 @@ namespace kalfilter
         
     }
 
+    KFResult KalmanFilter::getOutput() const
+    {
+        KFResult result;
 
+        if (!initialized)
+        {
+            return result;
+        }
+
+        result.valid = true;
+        result.state = X;
+        //result.covariance = P;
+
+        return result;
+    }
 
 
 }//namespace kalfilter
