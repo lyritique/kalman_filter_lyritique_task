@@ -44,11 +44,11 @@ struct ArmorDetection
     // 四个关键点顺序固定为：左上、左下、右下、右上
     std::array<cv::Point2f, 4> corners {};
 
-    cv::RotatedRect box {};    // 四点的外接矩形，供 NMS 和画图使用
-    float score = 0.0f;   // 类别置信度
-    int color = -1;       // 0 蓝、1 红、2 白、3 紫
-    int number = -1;      // 机器人类别编号，不是装甲板槽位 0~3
-    bool big = false;     // 是否为大装甲板
+    cv::RotatedRect box {};//四点的外接矩形，供 NMS 和画图使用
+    float score = 0.0f;   //类别置信度
+    int color = -1;       //0 蓝、1 红、2 白、3 紫
+    int number = -1;      //机器人类别编号
+    bool big = false;     //是否为大装甲板
 };
 
 using ArmorDetections = std::vector<ArmorDetection>;//早知道有这个

@@ -100,5 +100,5 @@ class KalmanFilter
 };
 
 
-}
+}//namespace kalfilter
 # endif

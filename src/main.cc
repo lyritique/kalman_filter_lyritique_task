@@ -1,3 +1,4 @@
+# include "draw.hpp"
 # include "kalman_filter_task.hpp"
 # include "armor_detector.hpp"
 # include "imu_alignment.hpp"
@@ -160,6 +161,9 @@ int main(int argc, char** argv)
         auto detections = detector.detect(frame);
         kalfilter::cam_ypd ypd {};
 
+        //draw装甲板
+        draw::drawDetections(frame, detections);
+
         for (auto detection:detections)
         {
             //pnp
@@ -187,11 +191,16 @@ int main(int argc, char** argv)
         else csv << image_time << output.state;
 
         //这里draw数据
+        draw::drawStateText(frame, output);
 
+        writer.write(frame);
     }//循环结束
 
     //收尾
-
+    csv.close();
+    writer.release();
+    cap.release();
+    
 
 
 
