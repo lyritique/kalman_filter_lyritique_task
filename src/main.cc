@@ -202,7 +202,7 @@ int main(int argc, char** argv)
         auto output { ekf.getOutput()};
 
         //csv输入
-        if (!output.valid)csv << image_time << "偏离过大";//多次偏离应该reset，但还未写
+        if (!output.valid)csv << image_time << "偏离过大" << "\r\n";//多次偏离应该reset，但还未写
         else 
         {
             csv << image_time  << ','<< output.valid  << ',' ;

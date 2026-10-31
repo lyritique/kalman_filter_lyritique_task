@@ -55,7 +55,8 @@ struct pnpConfig
     };
 
     static const constexpr double max_reproj_err {3.0};                                                     //戴帽子大师
-
+    static const constexpr double kyaw {0};
+    static const constexpr double cost_threhold {33};
 
 
 };
@@ -84,6 +85,7 @@ class pnpSolver
     explicit pnpSolver();
     void input (const std::array<cv::Point2f, 4>& image_corners, bool big);
     void easySolver();
+    void renewPrevious();
     PnPResult getOutput();
     private:
 
@@ -99,6 +101,8 @@ class pnpSolver
     cv::Mat distortion_coeffs_;
 
     double proj_err {};
+
+    double previous_yaw {};
 
 
 };
