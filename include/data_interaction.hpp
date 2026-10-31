@@ -18,8 +18,8 @@ namespace  {
 struct pnpConfig
 {
     //小装甲板尺寸
-    static constexpr double half_small_height {140 * 0.5};
-    static constexpr double half_small_width  {125 * 0.5};
+    static constexpr double half_small_height {135 * 0.5};
+    static constexpr double half_small_width  {56 * 0.5};
 
     std::vector<cv::Point3d> small_armorPoint 
     {
@@ -30,8 +30,8 @@ struct pnpConfig
     };
 
     //大装甲板尺寸
-    static constexpr double half_big_height {235 * 0.5};
-    static constexpr double half_big_width  {127 * 0.5};
+    static constexpr double half_big_height {225 * 0.5};
+    static constexpr double half_big_width  {56 * 0.5};
 
     std::vector<cv::Point3d> big_armorPoint 
     {

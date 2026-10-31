@@ -9,6 +9,7 @@
 # include <string_view>
 # include <fstream>
 # include <filesystem>
+# include <vector>
 
 namespace {
 /*
@@ -100,6 +101,8 @@ int main(int argc, char** argv)
     int width  = frame.cols;
     int height = frame.rows;
     
+    /*
+
     //第一帧拿都拿了，init一下ekf
     {
         auto detections = detector.detect(frame);
@@ -124,6 +127,8 @@ int main(int argc, char** argv)
 
             ekf.init(efk_input);
     }
+
+    */
     
     //用上面的数据构建输出video的writer
     cv::VideoWriter writer(output_path + "/output_video.avi", 
@@ -138,6 +143,11 @@ int main(int argc, char** argv)
     
     //重设为第一帧
     cap.set(cv::CAP_PROP_POS_FRAMES, 0);
+
+    //吸收教训，在循环内初始化
+    bool ekf_initialized = false;
+    //记一下重投影误差
+    std::vector<double> errs {};
 
     //相信imu的总时间（22.5s）还是视频的总时间（17s），是个问题
     //我认为1秒帧数不是固定的，转到视频时变成30FPS了
@@ -154,7 +164,7 @@ int main(int argc, char** argv)
         previous_image_time = image_time;
         const kalfilter::imu cam_imu {kalfilter::alignImuToImage (imu_data,image_time)};
 
-        if (has_previous_time) ekf.predict(dt);
+        if (has_previous_time && ekf_initialized) ekf.predict(dt);
         has_previous_time = true;
 
         cap.read(frame);
@@ -167,19 +177,24 @@ int main(int argc, char** argv)
         for (auto detection:detections)
         {
             //pnp
-            pnp::PnPResult pose {};
             pnp.input(detection.corners, detection.big);
             pnp.easySolver();
-            pose = pnp.getOutput();
-            computeYPD(pose.measurement, ypd);
+            pnp::PnPResult pose {pnp.getOutput()};
 
             //这里写检测
+            if (!pose.valid)continue;
+            errs.push_back(pose.err);
 
-            //这里draw装甲板
-
+            
             //ekf的update
-            kalfilter::armerState efk_input{};
-            efk_input.measurement = std::move(pose.measurement);
+            computeYPD(pose.measurement, ypd);
+            kalfilter::armerState efk_input{pose.measurement};
+            if (!ekf_initialized)
+            {
+                ekf.init(efk_input);
+                ekf_initialized = true;
+                break;
+            }
             ekf.update(efk_input, ypd);
         }
         ekf.renewArmorList();
@@ -188,11 +203,24 @@ int main(int argc, char** argv)
 
         //csv输入
         if (!output.valid)csv << image_time << "偏离过大";//多次偏离应该reset，但还未写
-        else csv << image_time << output.state;
+        else 
+        {
+            csv << image_time  << ','<< output.valid  << ',' ;
+            for (int i {}; i < 9; ++i)
+            {
+                csv <<  output.state(i) << ',';
+            }
+            for (int i {}; i < errs.size(); ++i)
+            {
+                csv << errs[i] << ',';
+            }
+            csv << "\r\n" ;
+        }
+
+        errs.clear();
 
         //这里draw数据
         draw::drawStateText(frame, output);
-
         writer.write(frame);
     }//循环结束
 

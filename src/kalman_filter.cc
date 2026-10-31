@@ -239,6 +239,7 @@ namespace kalfilter
         X(2) = measurement.measurement(2) - radius * std::cos(measurement.measurement(3));      // 由 y2 = X2 + X8·cos(yaw) 反解
         P.setIdentity();
         P *= 0.1 ;//ai说要写成单位的，不能直接fill，0.1后面填config处理
+        P(8, 8) = config.kRadiusSigma * config.kRadiusSigma;
         initialized = true;
 
     }
@@ -293,6 +294,8 @@ namespace kalfilter
         Q(8,8) = config.p_r * dt; 
 
         P = F * P * F.transpose() + Q;
+
+        //P(8, 8) *= config.kRadiusSigma;
         
         //正定化，就是沿对角线对称
         P = 0.5 * (P + P.transpose());

@@ -14,9 +14,9 @@ struct KalmanConfig
 
 
     //Q
-    double p_coord = 100;
-    double p_yaw = 400;
-    double p_r {};
+    double p_coord = 10;
+    double p_yaw = 40;
+    double p_r {1e-5};
 
     //R
     //yac对角噪声
@@ -30,6 +30,8 @@ struct KalmanConfig
     double assoc_pos_gate {50};
     double chi2_gate {9.49};
 
+    //狠狠限制r的协方差，不让它跳了
+    double kRadiusSigma = 0.01;
 };
 
 //相机系球坐标，用于求R观测噪声协方差矩阵，噪声天然的坐标系是 YPD
