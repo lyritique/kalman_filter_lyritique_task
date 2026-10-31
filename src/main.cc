@@ -104,7 +104,7 @@ int main(int argc, char** argv)
     {
         auto detections = detector.detect(frame);
         Eigen::Matrix<double,4,1> best {};
-        double err {};
+        double err {1024};
 
         for (auto detection:detections)
         {
@@ -132,7 +132,7 @@ int main(int argc, char** argv)
 
     
     //CSV的创建
-    std::ofstream csv (output_path + "/output/data.csv");
+    std::ofstream csv (output_path + "/data.csv");
     if (!csv) throw std::runtime_error("csv无法创建。");
     csv << "time,valid,px,py,pz,yaw,vx,vy,vz,vyaw,r\r\n";
     
@@ -200,7 +200,7 @@ int main(int argc, char** argv)
     csv.close();
     writer.release();
     cap.release();
-    
+
 
 
 
