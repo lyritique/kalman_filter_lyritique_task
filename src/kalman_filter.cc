@@ -222,6 +222,7 @@ namespace kalfilter
     {
         reset();
         F.setIdentity();
+        config =KalmanConfig {};
     }
 
     void KalmanFilter::init(armerState& measurement)
@@ -254,7 +255,7 @@ namespace kalfilter
     }
    
 
-    void KalmanFilter::predict(const double& dt,const KalmanConfig& config)
+    void KalmanFilter::predict(const double& dt)
     {
         //f(X)部分，由于后面不再用到t-1的X^+，直接覆盖
         /*我的旧写法
@@ -299,7 +300,7 @@ namespace kalfilter
     }
 
 
-    void KalmanFilter::update ( armerState& armor ,const KalmanConfig& config ,const cam_ypd& ypd)
+    void KalmanFilter::update ( armerState& armor  ,const cam_ypd& ypd)
     {
         /*
         //h(X_)部分写在匿名命名空间

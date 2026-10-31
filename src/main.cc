@@ -3,13 +3,53 @@
 # include "imu_alignment.hpp"
 # include "data_interaction.hpp"
 
+# include <cmath>
 # include <opencv2/videoio.hpp>
 # include <string_view>
 # include <fstream>
 # include <filesystem>
 
 namespace {
+/*
+void FrametoKFresult(const cv::Mat& frame,
+detector::Detector& detector,pnp::pnpSolver& pnp, kalfilter::KalmanFilter& ekf)
+{
+    auto detections = detector.detect(frame);
 
+        for (auto detection:detections)
+        {
+            //pnp
+            pnp::PnPResult pose {};
+            pnp.input(detection.corners, detection.big);
+            pnp.easySolver();
+            pose = pnp.getOutput();
+
+            //这里写检测
+
+            //ekf的update
+            kalfilter::armerState efk_input{};
+            efk_input.measurement = std::move(pose.measurement);
+            
+        }
+
+}
+*/
+
+void computeYPD (Eigen::Matrix<double,4,1>& measurement,kalfilter::cam_ypd& ypd)//x,y,z,yaw
+{
+    /*
+    azi  = atan2(x, z)
+    ele  = atan2(y, sqrt(x² + z²))
+    dist = sqrt(x² + y² + z²)
+    */
+    ypd.azi = std::atan2(measurement[0],measurement[2]);
+    ypd.ele = std::atan2(measurement[1],
+        std::hypot(measurement[0], measurement[2]));
+    ypd.dist = std::sqrt(measurement[0]*measurement[0] +
+        measurement[1]*measurement[1] +
+        measurement[2]*measurement[2]);
+
+}
 }
 
 
@@ -58,6 +98,32 @@ int main(int argc, char** argv)
     cv::Size frameSize = frame.size(); 
     int width  = frame.cols;
     int height = frame.rows;
+    
+    //第一帧拿都拿了，init一下ekf
+    {
+        auto detections = detector.detect(frame);
+        Eigen::Matrix<double,4,1> best {};
+
+        for (auto detection:detections)
+        {
+            //pnp
+            pnp::PnPResult pose {};
+            pnp.input(detection.corners, detection.big);
+            pnp.easySolver();
+            pose = pnp.getOutput();
+        
+            //这里写检测
+            //这里的检测应该要挑出最好的
+            best = {};
+        }
+            //ekf的input
+            kalfilter::armerState efk_input{};
+            efk_input.measurement = std::move(best);
+
+            ekf.init(efk_input);
+    }
+    
+    //用上面的数据构建输出video的writer
     cv::VideoWriter writer(output_path + "output_video.avi", 
         cv::VideoWriter::fourcc('M','J','P','G'),fps, frameSize);
     if (!writer.isOpened()) throw std::runtime_error("无法创建输出视频");
@@ -68,12 +134,66 @@ int main(int argc, char** argv)
     if (!csv) throw std::runtime_error("csv无法创建。");
     csv << "time,valid,px,py,pz,yaw,vx,vy,vz,vyaw,r\r\n";
     
-    //
-    double previous_image_time = 0.0;
-    bool has_previous_time = false;
-
     //重设为第一帧
     cap.set(cv::CAP_PROP_POS_FRAMES, 0);
+
+    //相信imu的总时间（22.5s）还是视频的总时间（17s），是个问题
+    //我认为1秒帧数不是固定的，转到视频时变成30FPS了
+    //所有视频时间不可信，要重新计算
+    const double video_start_time = imu_data.front().time;
+    double previous_image_time {};
+    bool has_previous_time = false;
+
+    for (int frame_index {};frame_index < frame_number;++frame_index)
+    {
+        //处理时间
+        const double image_time {video_start_time + frame_index / fps};
+        const double dt {has_previous_time ? image_time-previous_image_time : image_time};
+        previous_image_time = image_time;
+        const kalfilter::imu cam_imu {kalfilter::alignImuToImage (imu_data,image_time)};
+
+        ekf.predict(dt);
+
+        cap.read(frame);
+        auto detections = detector.detect(frame);
+        kalfilter::cam_ypd ypd {};
+
+        for (auto detection:detections)
+        {
+            //pnp
+            pnp::PnPResult pose {};
+            pnp.input(detection.corners, detection.big);
+            pnp.easySolver();
+            pose = pnp.getOutput();
+            computeYPD(pose.measurement, ypd);
+
+            //这里写检测
+
+            //这里draw装甲板
+
+            //ekf的update
+            kalfilter::armerState efk_input{};
+            efk_input.measurement = std::move(pose.measurement);
+            ekf.update(efk_input, ypd);
+        }
+        ekf.renewArmorList();
+
+        auto output { ekf.getOutput()};
+
+        //csv输入
+        if (output.valid)csv << image_time << "偏离过大";//多次偏离应该reset，但还未写
+        else csv << image_time << output.state;
+
+        //这里draw数据
+
+    }//循环结束
+
+    //收尾
+
+
+
+
+
     /*
     for (int frame_index = 0; cv::readOneFrame(cap, frame); ++frame_index) {
         const double image_time = timelineTime(frame_index);

@@ -25,6 +25,14 @@ namespace{
 
 
 }
+
+
+
+
+
+
+
+
 pnpSolver::pnpSolver()
 {
     const pnpConfig::camParams cam;

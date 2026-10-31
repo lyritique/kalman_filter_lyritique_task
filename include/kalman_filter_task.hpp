@@ -76,8 +76,8 @@ class KalmanFilter
 
         void init(armerState& measurement);
         void reset();
-        void predict(const double& dt,const KalmanConfig& config);
-        void update(armerState& armor ,const KalmanConfig& config ,const cam_ypd& ypd);
+        void predict(const double& dt);
+        void update(armerState& armor ,const cam_ypd& ypd);
         //这个是每一帧的结束处理id_list的
         void renewArmorList ();
         KFResult getOutput() const;
@@ -90,7 +90,7 @@ class KalmanFilter
 
         bool initialized = false;
 
-
+        KalmanConfig config {};
 
         std::vector<storedID> id_list {};
         int max_id {};

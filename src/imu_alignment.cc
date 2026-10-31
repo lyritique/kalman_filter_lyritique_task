@@ -48,7 +48,14 @@ std::vector<kalfilter::imu> readImuTxt(std::string file_address)
 
 }
 
-
+//由于暂时没有imu数据表，同时offs是一个固定值，就写一个弱智函数
+kalfilter::imu alignImuToImage(
+    const std::vector<kalfilter::imu>& imu_data,
+    double image_time,
+    double offset)
+{
+    return interpolateQuat(imu_data, image_time - offset);
+}
 
 
 //现在要实现imu向相机时刻对齐
