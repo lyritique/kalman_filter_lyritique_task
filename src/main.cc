@@ -4,7 +4,8 @@
 # include "data_interaction.hpp"
 
 # include <opencv2/videoio.hpp>
-#include <string_view>
+# include <string_view>
+# include <fstream>
 
 namespace {
 
@@ -31,20 +32,40 @@ int main(int argc, char** argv)
     //千层饼。先是有这个参数，再将其依次与视频后缀做判断
     if (argc > 4) output_path = args[3];
     }
-    /*
+    
 
-    //全都构建初始化了
-    auto imu_data = kalfilter::readImuTxt(imu_path);
+    //几个部件全都构建初始化了
+    auto imu_data = kalfilter::readImuTxt(imu_path);//内涵错误报错
     detector::Detector detector;
     pnp::pnpSolver pnp;
-    kalfilter::KalmanFilter ekf(config);
-    cv::VideoWriter writer(output_path, codec, output_fps, frame_size);
+    kalfilter::KalmanFilter ekf(kalfilter::KalmanConfig config);//使用默认值
 
-    cv::VideoCapture cap(video_path);
+    //video的读写
+    cv::VideoCapture cap(video_path);//写这个就要小心了
+    if (!cap.isOpened()) throw std::runtime_error("读不了视频文件: " + video_path);
+    //获得视频相关信息fps与总帧数
+    double fps {cap.get(cv::CAP_PROP_FPS)};
+    double frame_number {cap.get(cv::CAP_PROP_FRAME_COUNT)};
+    //读第一帧，拿cv::size
+    cv::Mat frame;
+    cap >> frame;
+    if (frame.empty())  throw std::runtime_error("第一帧读不了。 " + video_path) ;
+    cv::Size frameSize = frame.size(); 
+    int width  = frame.cols;
+    int height = frame.rows;
+    cv::VideoWriter writer("output/output_video.avi", 
+        cv::VideoWriter::fourcc('m','p','4','v'),fps, frameSize);
     
+    //CSV的创建
+    std::ofstream csv ("output/data.csv");
+    if (!csv) throw std::runtime_error("csv无法创建。");
+    csv << "     \r\n";
+    
+    //
     double previous_image_time = 0.0;
     bool has_previous_time = false;
 
+    /*
     for (int frame_index = 0; cv::readOneFrame(cap, frame); ++frame_index) {
         const double image_time = timelineTime(frame_index);
         const auto camera_imu =interpolateQuat(imu_data, image_time - 0.009);
