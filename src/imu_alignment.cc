@@ -8,6 +8,8 @@
 
 
 
+namespace kalfilter {
+
 
 
 //读取imu数据，直接读出一个imu数据的组
@@ -85,7 +87,7 @@ kalfilter::imu interpolateQuat(const std::vector<kalfilter::imu>& imu_data,doubl
 }
 
 
-
+}//namespace kalfilter
 
 
 

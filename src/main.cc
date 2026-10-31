@@ -6,6 +6,7 @@
 # include <opencv2/videoio.hpp>
 # include <string_view>
 # include <fstream>
+# include <filesystem>
 
 namespace {
 
@@ -27,18 +28,21 @@ int main(int argc, char** argv)
     //需要检测输入字符串末尾是否有对应后缀
     constexpr std::string_view formEnds[] {".mp4",".avi",".mkv"};
 
-    if (args[1].ends_with(".txt"&& argc > 3))imu_path = args[1];
+    if (argc > 3 && args[1].ends_with(".txt"))imu_path = args[1];
     if (argc > 2 ) for (auto formEnd :formEnds) if (args[0].ends_with(formEnd))video_path = args[0];
     //千层饼。先是有这个参数，再将其依次与视频后缀做判断
     if (argc > 4) output_path = args[3];
     }
     
+    //创建输出目录
+    std::filesystem::create_directories(output_path);
 
     //几个部件全都构建初始化了
     auto imu_data = kalfilter::readImuTxt(imu_path);//内涵错误报错
+    if (imu_data.empty()) throw std::runtime_error("IMU 数据为空");
     detector::Detector detector;
     pnp::pnpSolver pnp;
-    kalfilter::KalmanFilter ekf(kalfilter::KalmanConfig config);//使用默认值
+    kalfilter::KalmanFilter ekf;//都使用默认值
 
     //video的读写
     cv::VideoCapture cap(video_path);//写这个就要小心了
@@ -46,6 +50,7 @@ int main(int argc, char** argv)
     //获得视频相关信息fps与总帧数
     double fps {cap.get(cv::CAP_PROP_FPS)};
     double frame_number {cap.get(cv::CAP_PROP_FRAME_COUNT)};
+    if (fps <= 0 ||fps > 1000) throw std::runtime_error("视频有问题");
     //读第一帧，拿cv::size
     cv::Mat frame;
     cap >> frame;
@@ -53,18 +58,22 @@ int main(int argc, char** argv)
     cv::Size frameSize = frame.size(); 
     int width  = frame.cols;
     int height = frame.rows;
-    cv::VideoWriter writer("output/output_video.avi", 
-        cv::VideoWriter::fourcc('m','p','4','v'),fps, frameSize);
+    cv::VideoWriter writer(output_path + "output_video.avi", 
+        cv::VideoWriter::fourcc('M','J','P','G'),fps, frameSize);
+    if (!writer.isOpened()) throw std::runtime_error("无法创建输出视频");
+
     
     //CSV的创建
-    std::ofstream csv ("output/data.csv");
+    std::ofstream csv (output_path + "output/data.csv");
     if (!csv) throw std::runtime_error("csv无法创建。");
-    csv << "     \r\n";
+    csv << "time,valid,px,py,pz,yaw,vx,vy,vz,vyaw,r\r\n";
     
     //
     double previous_image_time = 0.0;
     bool has_previous_time = false;
 
+    //重设为第一帧
+    cap.set(cv::CAP_PROP_POS_FRAMES, 0);
     /*
     for (int frame_index = 0; cv::readOneFrame(cap, frame); ++frame_index) {
         const double image_time = timelineTime(frame_index);
