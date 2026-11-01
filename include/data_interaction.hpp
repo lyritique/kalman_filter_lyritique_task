@@ -72,7 +72,24 @@ struct PnPResult
     bool valid = false;
     Eigen::Matrix<double, 4, 1> measurement {};
     double err {};
+    Eigen::Vector3d normal {Eigen::Vector3d::Zero()};   // 板外法向（相机系）
 };
+
+
+struct Candidate
+    {
+        double rms {};
+        double cost {};
+        double tz {};
+        double yaw {};
+        Eigen::Matrix<double, 4, 1> measurement {};
+        Eigen::Vector3d normal {Eigen::Vector3d::Zero()};
+        cv::Mat rvec {};
+        cv::Mat tvec {};
+        int branch {};
+        bool inward {};          // n·t > 0：法向背离相机
+        bool reverse {};
+    };
 
 
 
@@ -101,6 +118,14 @@ class pnpSolver
     }
     private:
 
+    // 把4个角点排成与 armorPoint 模板一一对应的顺序：
+    // 绕质心按角度排序得到一个不自交的环
+    // 旋转环，使"第一条边"落在 135mm 长边上
+    // reverse=true 时反向遍历（用来消除镜像）
+    // 这样完全不依赖网络关键点输出的顺序。
+    std::array<cv::Point2f, 4> canonicalize(const std::array<cv::Point2f, 4>& raw,
+                                            bool reverse) const;
+
     Eigen::Matrix<double,4,1> output = Eigen::Matrix<double, 4, 1>::Zero();
     bool output_valid_ = false;
     std::vector<cv::Point2d> corners {};
@@ -114,7 +139,14 @@ class pnpSolver
 
     double proj_err {};
 
-    double previous_yaw {};
+    // 上一帧可信的yaw法向，用来在两个 IPPE 解之间做连续性判断,不要跳了
+    double previous_yaw {10086};
+    Eigen::Vector3d previous_normal {Eigen::Vector3d::Zero()};
+
+    // getOutput()用的缓存
+    Eigen::Vector3d last_normal_ {Eigen::Vector3d::Zero()};
+    int last_branch_ {-1};
+    bool last_big_ {false};
 
 
 };

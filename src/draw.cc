@@ -236,15 +236,21 @@ void drawFourArmorReprojections(
 
     for (int armor_id = 0; armor_id < 4; ++armor_id)
     {
-        const double theta = wrap(
-            chassis_yaw + armor_id * kPi * 0.5);
+        //const double theta = wrap(
+        //    chassis_yaw + armor_id * kPi * 0.5);
+
+        const double theta = chassis_yaw + armor_id * kPi * 0.5;
+
+        const double center_x = px - radius * std::sin(theta);
+
+        const double center_z = pz - radius * std::cos(theta);
 
         // 与 EKF 观测模型的板中心公式一致
-        const double center_x =
-            px + radius * std::sin(theta);
+        //const double center_x =
+        //    px + radius * std::sin(theta);
         const double center_y = py;
-        const double center_z =
-            pz + radius * std::cos(theta);
+        //const double center_z =
+        //    pz + radius * std::cos(theta);
 
         const double s = std::sin(theta);
         const double c = std::cos(theta);
