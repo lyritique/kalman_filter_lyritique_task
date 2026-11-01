@@ -15,8 +15,8 @@ struct KalmanConfig
 
     //Q
     double p_coord = 10;
-    double p_yaw = 40;
-    double p_r {1e-5};
+    double p_yaw = 10;
+    double p_r {1e-6};
 
     //R
     //yac对角噪声
