@@ -32,6 +32,20 @@ cv::Scalar getcolor(int color)
     default: return {0, 255, 0};
     }
 }
+
+
+
+double wrap(double angle)//我怎么记得我写过呢
+{
+    constexpr double kPi = 3.14159265358979323846;
+
+    while (angle > kPi) angle -= 2.0 * kPi;
+    while (angle < -kPi) angle += 2.0 * kPi;
+
+    return angle;
+}
+
+
 }
 
 
@@ -182,7 +196,127 @@ void drawStateText(
     }
 }
 
+void drawFourArmorReprojections(
+    cv::Mat& frame,
+    const kalfilter::KFResult& state,
+    const cv::Mat& camera_matrix,
+    const cv::Mat& distortion_coeffs,
+    bool big)
+{
+    if (!state.valid) return;
 
+    constexpr double kPi = 3.14159265358979323846;
+
+    const double px = state.state(0);
+    const double py = state.state(1);
+    const double pz = state.state(2);
+    const double chassis_yaw = state.state(3);
+    const double radius = state.state(8);
+
+    const double half_width = big ? 225.0 * 0.5 / 1000.0
+                                  : 135.0 * 0.5 / 1000.0;
+    const double half_height = 55.0 * 0.5 / 1000.0;
+
+    // 与当前 PnP 对象点保持一致：
+    // P0(0,-w,+h), P1(0,-w,-h),
+    // P2(0,+w,-h), P3(0,+w,+h)
+    const std::vector<cv::Point3d> object_points {
+        {0.0, -half_width,  half_height},
+        {0.0, -half_width, -half_height},
+        {0.0,  half_width, -half_height},
+        {0.0,  half_width,  half_height},
+    };
+
+    const std::array<cv::Scalar, 4> colors {
+        cv::Scalar(0, 255, 0),
+        cv::Scalar(0, 255, 255),
+        cv::Scalar(255, 0, 0),
+        cv::Scalar(255, 0, 255),
+    };
+
+    for (int armor_id = 0; armor_id < 4; ++armor_id)
+    {
+        const double theta = wrap(
+            chassis_yaw + armor_id * kPi * 0.5);
+
+        // 与 EKF 观测模型的板中心公式一致
+        const double center_x =
+            px + radius * std::sin(theta);
+        const double center_y = py;
+        const double center_z =
+            pz + radius * std::cos(theta);
+
+        const double s = std::sin(theta);
+        const double c = std::cos(theta);
+
+        // 装甲板坐标系 -> 相机坐标系
+        // 第 0 列：板法向
+        // 第 1 列：板宽度方向
+        // 第 2 列：板高度方向，当前约定为相机 y 向下
+        const cv::Mat rotation =
+            (cv::Mat_<double>(3, 3) <<
+                s,  c, 0.0,
+                0.0, 0.0, 1.0,
+                c, -s, 0.0);
+
+        cv::Mat rvec;
+        cv::Rodrigues(rotation, rvec);
+
+        const cv::Mat tvec =
+            (cv::Mat_<double>(3, 1) <<
+                center_x,
+                center_y,
+                center_z);
+
+        std::vector<cv::Point2d> projected;
+        cv::projectPoints(
+            object_points,
+            rvec,
+            tvec,
+            camera_matrix,
+            distortion_coeffs,
+            projected);
+
+        if (projected.size() != 4) continue;
+
+        std::vector<cv::Point> image_points;
+        image_points.reserve(4);
+
+        for (const auto& point : projected)
+        {
+            image_points.emplace_back(
+                cvRound(point.x),
+                cvRound(point.y));
+        }
+
+        cv::polylines(
+            frame,
+            image_points,
+            true,
+            colors[armor_id],
+            2,
+            cv::LINE_AA);
+
+        cv::circle(
+            frame,
+            image_points[0],
+            4,
+            colors[armor_id],
+            cv::FILLED);
+
+        cv::putText(
+            frame,
+            "id=" + std::to_string(armor_id),
+            image_points[0] + cv::Point(5, -5),
+            cv::FONT_HERSHEY_SIMPLEX,
+            0.45,
+            colors[armor_id],
+            1,
+            cv::LINE_AA);
+
+        //看完画的，心脏也不跳了
+    }
+}
 
 
 

@@ -1,6 +1,7 @@
 # include "data_interaction.hpp"
 # include <opencv2/calib3d.hpp>
 # include <opencv2/core.hpp>
+# include <iostream>
 
 
 
@@ -95,7 +96,7 @@ void pnpSolver::easySolver()
         cv::Rodrigues(rvecs[i], R);
 
         //版应朝向相机
-        if (R.col(0).dot(tvecs[i]) >=0)continue;
+        //if (R.col(0).dot(tvecs[i]) <=0)continue;
 
         std::vector<cv::Point2d> reproj{};
         //重投影，结果reproj
@@ -124,6 +125,14 @@ void pnpSolver::easySolver()
             best_err = rms; best = i; best_tvec = tvecs[i].clone();
             best_cost = cost; best_yaw = yaw;
         }
+
+
+
+
+        std::cout << "sol " << i
+          << " rms=" << rms
+          << " n·t=" << R.col(0).dot(tvecs[i])
+          << " yaw=" << yaw * 57.3 << '\n';
     }
 
     if (best_err > config.max_reproj_err) return;
@@ -185,11 +194,11 @@ void pnpSolver::easySolver()
 
 }
 
-/*void pnpSolver::renewPrevious()
+void pnpSolver::renewPrevious(double& best_yaw)
 {
-    previous_yaw = 
+    previous_yaw = best_yaw;
 }
-*/
+
 
 PnPResult pnpSolver::getOutput()
 {

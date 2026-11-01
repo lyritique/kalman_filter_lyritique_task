@@ -238,7 +238,7 @@ namespace kalfilter
         X(0) = measurement.measurement(0) - radius * std::sin(measurement.measurement(3));      // 由 y0 = X0 + X8·sin(yaw) 反解
         X(2) = measurement.measurement(2) - radius * std::cos(measurement.measurement(3));      // 由 y2 = X2 + X8·cos(yaw) 反解
         P.setIdentity();
-        P *= 0.1 ;//ai说要写成单位的，不能直接fill，0.1后面填config处理
+        P *= 10 ;//ai说要写成单位的，不能直接fill，0.1后面填config处理
         P(8, 8) = config.kRadiusSigma * config.kRadiusSigma;
         initialized = true;
 
@@ -326,12 +326,73 @@ namespace kalfilter
         //检查初始化
         if (!initialized) return;
 
+        //保存先验
+        const Eigen::Matrix<double, 9, 1> x_prior = X;
+        const Eigen::Matrix<double, 9, 9> P_prior = P;
+
         //判断armor的id，顺带算好H，nu（残差）,S^-1
         Eigen::Matrix4d R {computeR(config, ypd)};
         armor.testResult = associate(armor,id_list,X,P,config,R,max_id);
 
         //检查是否过了匹配
         if (!armor.testResult.valid)return;
+
+        //保存先验，写迭代
+        Eigen::Matrix<double, 9, 1> x_iter = x_prior;
+
+        constexpr int max_iterations = 5;
+
+        for (int iteration = 0;iteration < max_iterations;++iteration)
+        {
+            // 1. 在 x_iter 处重新线性化
+            const Eigen::Matrix<double, 4, 9> H =
+            computeH(x_iter, armor.testResult.id);
+
+            // 2. 新息协方差
+            const Eigen::Matrix4d S  {H * P_prior * H.transpose() + R};
+
+            const Eigen::Matrix4d S_inv {S.ldlt().solve(Eigen::Matrix4d::Identity())};
+            
+            // 3. 增益    
+            const Eigen::Matrix<double, 9, 4> K {P_prior * H.transpose() * S_inv};
+   
+            // 4. 当前迭代点与观测的差    
+            Eigen::Matrix<double, 4, 1> residual = armor.measurement - observationModel(x_iter, armor.testResult.id);   
+            residual(3) = wrap(residual(3));
+
+    
+            // 5. 当前状态相对先验移动了多少   
+            Eigen::Matrix<double, 9, 1> delta = x_iter - x_prior;
+
+    
+            // yaw 分量同样需要环绕
+            delta(3) = wrap(delta(3));
+
+    
+            // 6. IEKF 补偿项
+            residual += H * delta;
+            residual(3) = wrap(residual(3));
+
+    
+            // 7. 从x_prior出发
+            Eigen::Matrix<double, 9, 1> x_next = x_prior + K * residual;
+            x_next(3) = wrap(x_next(3));
+
+            // 8. 判断是否收敛
+            Eigen::Matrix<double, 9, 1> step = x_next - x_iter;
+            step(3) = wrap(step(3));
+            x_iter = x_next;
+
+            //每一项都要很小
+            const bool converged =
+            step.head<3>().norm() < 1e-4 &&
+            std::abs(step(3)) < 1e-4 &&
+            step.segment<3>(4).norm() < 1e-3 &&
+            std::abs(step(7)) < 1e-3 &&
+            std::abs(step(8)) < 1e-4;
+
+            if (converged)break;
+        }
 
         //把armor存起来，便于下一帧判断
         storedID armorID ;

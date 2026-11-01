@@ -85,8 +85,20 @@ class pnpSolver
     explicit pnpSolver();
     void input (const std::array<cv::Point2f, 4>& image_corners, bool big);
     void easySolver();
-    //void renewPrevious();
+    void renewPrevious(double& best_yaw);
     PnPResult getOutput();
+
+
+
+    const cv::Mat& cameraMatrix() const noexcept
+    {
+        return camera_matrix_;
+    }
+
+    const cv::Mat& distortionCoeffs() const noexcept
+    {
+        return distortion_coeffs_;
+    }
     private:
 
     Eigen::Matrix<double,4,1> output = Eigen::Matrix<double, 4, 1>::Zero();
