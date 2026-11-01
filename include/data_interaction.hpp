@@ -72,6 +72,7 @@ struct PnPResult
     bool valid = false;
     Eigen::Matrix<double, 4, 1> measurement {};
     double err {};
+    Eigen::Vector3d normal {Eigen::Vector3d::Zero()};   // 板外法向（相机系）
 };
 
 

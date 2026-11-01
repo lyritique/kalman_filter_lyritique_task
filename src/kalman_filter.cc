@@ -335,7 +335,7 @@ namespace kalfilter
 
         P = F * P * F.transpose() + Q;
 
-        //P(8, 8) *= config.kRadiusSigma;
+        P(8, 8) *= config.kRadiusSigma;
         
         //正定化，就是沿对角线对称
         P = 0.5 * (P + P.transpose());
@@ -416,7 +416,7 @@ namespace kalfilter
     
             // 7. 从x_prior出发
             Eigen::Matrix<double, 9, 1> x_next = x_prior + K * residual;
-            x_next(3) = wrap(x_next(3));
+            x_next(3) = x_next(3);
 
             // 8. 判断是否收敛
             Eigen::Matrix<double, 9, 1> step = x_next - x_iter;

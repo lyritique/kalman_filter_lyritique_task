@@ -210,6 +210,9 @@ int main(int argc, char** argv)
     //重设为第一帧
     cap.set(cv::CAP_PROP_POS_FRAMES, 0);
 
+    // 世界系 = 第 0 帧相机系，用 IMU 相对姿态把云台转动补掉
+    std::vector<Eigen::Matrix3d> R_wc(static_cast<std::size_t>(frame_number), Eigen::Matrix3d::Identity());
+
     //吸收教训，在循环内初始化
     bool ekf_initialized = false;
     //记一下重投影误差
@@ -234,6 +237,8 @@ int main(int argc, char** argv)
         has_previous_time = true;
 
         cap.read(frame);
+
+        const Eigen::Matrix3d& R = R_wc[frame_index];
 
         //灰度图，用来精修角点
         cv::Mat gray;
@@ -318,9 +323,22 @@ int main(int argc, char** argv)
                 continue;
             }
 
+
+
+            // 世界系转换
+            const Eigen::Vector3d p_cam(pose.measurement(0), pose.measurement(1),
+                                        pose.measurement(2));
+            const Eigen::Vector3d n_cam = pose.normal;
+            const Eigen::Vector3d p_w = R * p_cam;
+            const Eigen::Vector3d n_w = R * n_cam;
+
             //ekf的update
             
-            kalfilter::armerState efk_input{pose.measurement};
+            kalfilter::armerState efk_input{};
+
+            efk_input.measurement << p_w.x(), p_w.y(), p_w.z(),std::atan2(n_w.x(), n_w.z());
+
+
             if (!ekf_initialized)
             {
                 ekf.init(efk_input);
