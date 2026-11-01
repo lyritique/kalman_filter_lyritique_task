@@ -335,7 +335,7 @@ namespace kalfilter
 
         P = F * P * F.transpose() + Q;
 
-        P(8, 8) *= config.kRadiusSigma;
+        //P(8, 8) *= config.kRadiusSigma;
         
         //正定化，就是沿对角线对称
         P = 0.5 * (P + P.transpose());
