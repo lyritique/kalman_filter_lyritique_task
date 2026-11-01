@@ -284,6 +284,12 @@ int main(int argc, char** argv)
             
             
 
+            
+
+
+
+
+
             /*
             //pnp
             const std::array<cv::Point2f, 4> pnp_corners 
@@ -326,6 +332,10 @@ int main(int argc, char** argv)
         ekf.renewArmorList();
 
         auto output { ekf.getOutput()};
+
+
+
+        
 
         if (output.valid)
         {

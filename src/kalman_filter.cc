@@ -2,6 +2,7 @@
 # include <Eigen/src/Core/Matrix.h>
 # include <cmath>
 # include <eigen3/Eigen/Eigen>
+# include <iostream>
 
 
 
@@ -135,7 +136,7 @@ namespace kalfilter
         const Eigen::Matrix4d& R ,
         int& max_id)
         {
-            ObsAssociation best ;
+            
             Eigen::Matrix<double,4,1> h_id {};
             Eigen::Matrix<double,4,1> nu {};
             Eigen::Matrix<double,4,9> H_id {};
@@ -168,33 +169,59 @@ namespace kalfilter
                 //马氏距离
                 d2 = nu.transpose() * Sinv_id * nu;
 
+                std::cout << "id=" << id
+                << " d2=" << d2
+                << " nu_yaw=" << nu(3)
+                << '\n';
+
                 if (d2 <= config.chi2_gate ) return true;
                 else return false;
                 
             };
 
-            for (int i{};i < id_list.size();++i)
+            //再见了id——list
+            ObsAssociation best;
+            best.d2 = std::numeric_limits<double>::infinity();
+
+            for (int id{};id < 4;++id)
             {
                 //防止同一帧的上一个装甲板
-                if (id_list[i].isThisFrame) continue;
+                //if (id_list[i].isThisFrame) continue;
 
-                if (!isSameArmor(id_list[i].id)) continue;
+                // 检查这个 id 本帧是否已经使用过
+                bool used_this_frame = false;
+
+                for (const auto& stored : id_list)
+                {
+                    if (stored.id == id && stored.isThisFrame)
+                    {
+                        used_this_frame = true;
+                        break;
+                    }
+                }
+
+                if (used_this_frame)continue;
+
+                if (!isSameArmor(id)) continue;
 
                 if (d2 < best.d2) 
                 {
                 best.d2 = d2;
-                best.id = id_list[i].id;
+                best.id = id;
                 best.nu = nu;
                 best.H = H_id;
                 best.Sinv = Sinv_id;
                 }
+                //std::cout << "与第" <<id <<"个板" <<d2 ;
             }
-
-            int next_id {max_id + 1};
+            std::cout << "\r\n";
+            //int next_id {max_id + 1};
           
             
             
+            if (best.id >= 0)best.valid = true;
 
+            /*
             if (best.d2 >= config.chi2_gate)
             {
                 if (isSameArmor(next_id) && d2 < config.chi2_gate)
@@ -211,6 +238,7 @@ namespace kalfilter
                 else best.valid = false;
             }
             else best.valid=true;
+            */
 
             return best;
             
@@ -238,7 +266,7 @@ namespace kalfilter
         X(0) = measurement.measurement(0) - radius * std::sin(measurement.measurement(3));      // 由 y0 = X0 + X8·sin(yaw) 反解
         X(2) = measurement.measurement(2) - radius * std::cos(measurement.measurement(3));      // 由 y2 = X2 + X8·cos(yaw) 反解
         P.setIdentity();
-        P *= 10 ;//ai说要写成单位的，不能直接fill，0.1后面填config处理
+        P *= 1 ;//ai说要写成单位的，不能直接fill，0.1后面填config处理
         P(8, 8) = config.kRadiusSigma * config.kRadiusSigma;
         initialized = true;
 

@@ -129,10 +129,10 @@ void pnpSolver::easySolver()
 
 
 
-        std::cout << "sol " << i
-          << " rms=" << rms
-          << " n·t=" << R.col(0).dot(tvecs[i])
-          << " yaw=" << yaw * 57.3 << '\n';
+        //std::cout << "sol " << i
+        //  << " rms=" << rms
+        //  << " n·t=" << R.col(0).dot(tvecs[i])
+        //  << " yaw=" << yaw * 57.3 << '\n';
     }
 
     if (best_err > config.max_reproj_err) return;
