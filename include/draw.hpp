@@ -21,7 +21,12 @@ void drawStateText(
     cv::Mat& frame,
     const kalfilter::KFResult& state);
 
-
+void drawFourArmorReprojections(
+    cv::Mat& frame,
+    const kalfilter::KFResult& state,
+    const cv::Mat& camera_matrix,
+    const cv::Mat& distortion_coeffs,
+    bool big = false);
 
 
 

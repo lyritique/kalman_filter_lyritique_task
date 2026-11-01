@@ -1,6 +1,7 @@
 # include "data_interaction.hpp"
 # include <opencv2/calib3d.hpp>
 # include <opencv2/core.hpp>
+# include <iostream>
 
 
 
@@ -69,7 +70,7 @@ void pnpSolver::easySolver()
     //获得rvecs{}, tvecs{}与errs
     const int nsol = cv::solvePnPGeneric(armorPoint, corners, 
         camera_matrix_,distortion_coeffs_ , rvecs, tvecs,
-        false, cv::SOLVEPNP_IPPE,cv::noArray(), errs);
+        false, cv::SOLVEPNP_IPPE,cv::noArray());
 
     if (nsol <= 0 || rvecs.empty()) 
     {
@@ -80,7 +81,7 @@ void pnpSolver::easySolver()
     int best = -1;
     double best_err = 1e18;
     double best_cost {10086};
-    cv::Mat best_R {};
+    //cv::Mat best_R {};
     double best_yaw {};
     cv::Mat best_tvec {};
     
@@ -95,7 +96,7 @@ void pnpSolver::easySolver()
         cv::Rodrigues(rvecs[i], R);
 
         //版应朝向相机
-        if (R.col(0).dot(tvecs[i]) >=0)continue;
+        //if (R.col(0).dot(tvecs[i]) <=0)continue;
 
         std::vector<cv::Point2d> reproj{};
         //重投影，结果reproj
@@ -121,9 +122,17 @@ void pnpSolver::easySolver()
 
         if (cost < best_cost) 
         { 
-            best_err = rms; best = i; best_tvec = tvecs[best].clone();
-            best_cost = cost; best_R=R ;best_yaw = yaw;
+            best_err = rms; best = i; best_tvec = tvecs[i].clone();
+            best_cost = cost; best_yaw = yaw;
         }
+
+
+
+
+        std::cout << "sol " << i
+          << " rms=" << rms
+          << " n·t=" << R.col(0).dot(tvecs[i])
+          << " yaw=" << yaw * 57.3 << '\n';
     }
 
     if (best_err > config.max_reproj_err) return;
@@ -185,11 +194,11 @@ void pnpSolver::easySolver()
 
 }
 
-/*void pnpSolver::renewPrevious()
+void pnpSolver::renewPrevious(double& best_yaw)
 {
-    previous_yaw = 
+    previous_yaw = best_yaw;
 }
-*/
+
 
 PnPResult pnpSolver::getOutput()
 {
