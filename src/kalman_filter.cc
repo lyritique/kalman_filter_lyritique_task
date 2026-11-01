@@ -56,11 +56,17 @@ namespace kalfilter
         //h(X_),是九维列向量转换为四维列向量，从描述中心到描述装甲板
         Eigen::Matrix<double,4,1> observationModel(const Eigen::Matrix<double,9,1>& X_,int id )
         {
-            Eigen::Matrix<double,4,1> y;
-            y << X_(0)+X_(8)*std::sin(X_(3)+id*kPI*0.5),
-             X_(1),
-             X_(2)+X_(8)*std::cos(X_(3)+id*kPI*0.5),
-             X_(3)+id*kPI*0.5;
+            constexpr double kPi = 3.14159265358979323846;
+            const double theta = X_(3) + id * kPi * 0.5;
+            const double s = std::sin(theta);
+            const double c = std::cos(theta);
+            const double r = X_(8);
+
+            Eigen::Matrix<double, 4, 1> y;
+            y <<X_(0) - r * s,
+                X_(1),
+                X_(2) - r * c,
+                theta;
 
             return y;
         }
@@ -77,17 +83,17 @@ namespace kalfilter
             Eigen::Matrix<double,4,9> J {Eigen::Matrix<double,4,9>::Zero()};
         
 
-            J(0,0) = 1.0;
-            J(0,3) =  r * co;
-            J(0,8) =  s;
+            J(0, 0) = 1.0;
+            J(0, 3) = -r * co;
+            J(0, 8) = -s;
 
-            J(1,1) = 1.0;
+            J(1, 1) = 1.0;
 
-            J(2,2) = 1.0;
-            J(2,3) = -r * s;
-            J(2,8) =  co;
+            J(2, 2) = 1.0;
+            J(2, 3) = r * s;
+            J(2, 8) = -co;
 
-            J(3,3) = 1.0;
+            J(3, 3) = 1.0;
 
             return J;
         }
@@ -261,10 +267,15 @@ namespace kalfilter
         X.setZero();
         X(8) = radius; //魔法数字
         const double c = measurement.testResult.id * kPI * 0.5;
+        //X(8) = radius;
+        //X(3) = q.yaw;
+        X(1) = measurement.measurement(1);      
         X(3) = measurement.measurement(3) - c;                         // 旋转角
-        X(1) = measurement.measurement(1);                             // 高度/该轴直接对应
-        X(0) = measurement.measurement(0) - radius * std::sin(measurement.measurement(3));      // 由 y0 = X0 + X8·sin(yaw) 反解
-        X(2) = measurement.measurement(2) - radius * std::cos(measurement.measurement(3));      // 由 y2 = X2 + X8·cos(yaw) 反解
+        //X(1) = measurement.measurement(1);                             // 高度/该轴直接对应
+        //hx模型：q = p - r*n
+        //因此初始化时：p = q + r*n
+        X(0) = measurement.measurement(0) + radius * std::sin(measurement.measurement(3));      
+        X(2) = measurement.measurement(2) + radius * std::cos(measurement.measurement(3));      
         P.setIdentity();
         P *= 1 ;//ai说要写成单位的，不能直接fill，0.1后面填config处理
         P(8, 8) = config.kRadiusSigma * config.kRadiusSigma;
@@ -294,7 +305,8 @@ namespace kalfilter
         X(3) += X(7)*dt;
         */
         X.head<3>() += X.segment<3>(4)*dt;
-        X(3) = wrap(X(7)*dt+X(3));
+        //X(3) = wrap(X(7)*dt+X(3));
+        X(3) = X(7)*dt+X(3);
 
         //计算雅克布矩阵
         //让它特定位置的4*4块变成单位乘dt，就是根据dt更新了
@@ -408,7 +420,7 @@ namespace kalfilter
 
             // 8. 判断是否收敛
             Eigen::Matrix<double, 9, 1> step = x_next - x_iter;
-            step(3) = wrap(step(3));
+            step(3) = step(3);
             x_iter = x_next;
 
             //每一项都要很小
@@ -434,7 +446,7 @@ namespace kalfilter
 
         //更新X，P
         X = x_iter;
-        X(3) = wrap(X(3));
+        X(3) = X(3);
 
         const Eigen::Matrix<double, 4, 9> H_final =computeH(X, armor.testResult.id);
 
