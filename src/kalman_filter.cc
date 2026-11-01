@@ -405,9 +405,22 @@ namespace kalfilter
         Eigen::MatrixXd K {P * armor.testResult.H.transpose()*armor.testResult.Sinv};
 
         //更新X，P
-        X += K * armor.testResult.nu;
-        Eigen::MatrixXd IKH = Eigen::MatrixXd::Identity(9, 9) - K * armor.testResult.H;//就是I-KH
-        P = IKH * P * IKH.transpose() + K * R * K.transpose(); 
+        X = x_iter;
+        X(3) = wrap(X(3));
+
+        const Eigen::Matrix<double, 4, 9> H_final =computeH(X, armor.testResult.id);
+
+        const Eigen::Matrix4d S_final =H_final * P_prior * H_final.transpose() + R;
+
+        const Eigen::Matrix4d S_inv_final =S_final.ldlt().solve( Eigen::Matrix4d::Identity());
+
+        const Eigen::Matrix<double, 9, 4> K_final =P_prior * H_final.transpose() * S_inv_final;
+
+        const Eigen::Matrix<double, 9, 9> IKH =Eigen::Matrix<double, 9, 9>::Identity() - K_final * H_final;
+
+        P = IKH * P_prior * IKH.transpose()+ K_final * R * K_final.transpose();
+
+        P = 0.5 * (P + P.transpose());
     }
 
     //这个是每一帧的结束处理id_list的
