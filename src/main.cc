@@ -177,6 +177,13 @@ int main(int argc, char** argv)
         for (auto detection:detections)
         {
             //pnp
+            const std::array<cv::Point2f, 4> pnp_corners 
+            {
+            detection.corners[1],  // BL
+            detection.corners[0],  // TL
+            detection.corners[3],  // TR
+            detection.corners[2],  // BR
+            };
             pnp.input(detection.corners, detection.big);
             pnp.easySolver();
             pnp::PnPResult pose {pnp.getOutput()};

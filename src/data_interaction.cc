@@ -69,7 +69,7 @@ void pnpSolver::easySolver()
     //获得rvecs{}, tvecs{}与errs
     const int nsol = cv::solvePnPGeneric(armorPoint, corners, 
         camera_matrix_,distortion_coeffs_ , rvecs, tvecs,
-        false, cv::SOLVEPNP_IPPE,cv::noArray(), errs);
+        false, cv::SOLVEPNP_IPPE,cv::noArray());
 
     if (nsol <= 0 || rvecs.empty()) 
     {
@@ -80,7 +80,7 @@ void pnpSolver::easySolver()
     int best = -1;
     double best_err = 1e18;
     double best_cost {10086};
-    cv::Mat best_R {};
+    //cv::Mat best_R {};
     double best_yaw {};
     cv::Mat best_tvec {};
     
@@ -121,8 +121,8 @@ void pnpSolver::easySolver()
 
         if (cost < best_cost) 
         { 
-            best_err = rms; best = i; best_tvec = tvecs[best].clone();
-            best_cost = cost; best_R=R ;best_yaw = yaw;
+            best_err = rms; best = i; best_tvec = tvecs[i].clone();
+            best_cost = cost; best_yaw = yaw;
         }
     }
 

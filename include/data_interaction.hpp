@@ -19,7 +19,7 @@ struct pnpConfig
 {
     //小装甲板尺寸
     static constexpr double half_small_height {135 * 0.5};
-    static constexpr double half_small_width  {56 * 0.5};
+    static constexpr double half_small_width  {55 * 0.5};
 
     std::vector<cv::Point3d> small_armorPoint 
     {
@@ -31,7 +31,7 @@ struct pnpConfig
 
     //大装甲板尺寸
     static constexpr double half_big_height {225 * 0.5};
-    static constexpr double half_big_width  {56 * 0.5};
+    static constexpr double half_big_width  {55 * 0.5};
 
     std::vector<cv::Point3d> big_armorPoint 
     {
@@ -85,7 +85,7 @@ class pnpSolver
     explicit pnpSolver();
     void input (const std::array<cv::Point2f, 4>& image_corners, bool big);
     void easySolver();
-    void renewPrevious();
+    //void renewPrevious();
     PnPResult getOutput();
     private:
 
