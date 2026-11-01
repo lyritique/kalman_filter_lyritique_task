@@ -10,6 +10,8 @@
 # include <fstream>
 # include <filesystem>
 # include <vector>
+# include <opencv2/imgproc.hpp>
+# include <limits>
 
 namespace {
 /*
@@ -52,7 +54,71 @@ void computeYPD (Eigen::Matrix<double,4,1>& measurement,kalfilter::cam_ypd& ypd)
         measurement[2]*measurement[2]);
 
 }
+
+/*
+
+std::array<cv::Point2f, 4> reorderArmorCorners(
+    const std::array<cv::Point2f, 4>& corners)
+{
+    // 检测器：TL, BL, BR, TR
+    // PnP 模板：BL, TL, TR, BR
+    return {
+        corners[1],  // BL
+        corners[0],  // TL
+        corners[3],  // TR
+        corners[2],  // BR
+    };
 }
+
+*/
+
+std::array<cv::Point2f, 4> refineArmorCorners(
+    const cv::Mat& gray,
+    const std::array<cv::Point2f, 4>& input,
+    float max_shift = 3.0f,
+    cv::Size window_size = cv::Size(5, 5))
+{
+    std::vector<cv::Point2f> refined(input.begin(), input.end());
+    const std::vector<cv::Point2f> original = refined;
+
+    cv::cornerSubPix(
+        gray,
+        refined,
+        window_size,       //搜索窗口
+        cv::Size(-1, -1),     // 不使用零区域
+        cv::TermCriteria(
+            cv::TermCriteria::EPS | cv::TermCriteria::COUNT,
+            20,
+            0.01));
+
+    std::array<cv::Point2f, 4> result {};
+
+    for (std::size_t i = 0; i < refined.size(); ++i)
+    {
+        const cv::Point2f delta = refined[i] - original[i];
+
+        const bool inside =
+            refined[i].x >= 1.5f &&
+            refined[i].y >= 1.5f &&
+            refined[i].x < gray.cols - 1.5f &&
+            refined[i].y < gray.rows - 1.5f;
+
+        const bool reasonable_shift =
+            std::isfinite(refined[i].x) &&
+            std::isfinite(refined[i].y) &&
+            cv::norm(delta) <= max_shift;
+
+        // 精修不可靠时保留网络原始角点
+        result[i] = inside && reasonable_shift
+            ? refined[i]
+            : original[i];
+    }
+
+    return result;
+}
+
+
+}//namespace
 
 
 int main(int argc, char** argv)
@@ -168,14 +234,57 @@ int main(int argc, char** argv)
         has_previous_time = true;
 
         cap.read(frame);
+
+        //灰度图，用来精修角点
+        cv::Mat gray;
+        cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
+        
+
         auto detections = detector.detect(frame);
         kalfilter::cam_ypd ypd {};
+
+        
 
         //draw装甲板
         draw::drawDetections(frame, detections);
 
         for (auto detection:detections)
         {
+            const double edge_length {cv::norm(detection.corners[0] - detection.corners[1])};
+            const int half_window {std::clamp(static_cast<int>(std::lround(edge_length * 0.08f)), 2, 5)};
+
+
+
+            const auto ordered {std::move(detection.corners)};
+
+            const auto refined {refineArmorCorners(gray, ordered, 2.0f,cv::Size(half_window, half_window))};
+
+            // 原始角点
+            pnp.input(detection.corners, detection.big);
+            pnp.easySolver();
+            const pnp::PnPResult raw_pose = pnp.getOutput();
+
+            // 精修角点
+            pnp.input(refined, detection.big);
+            pnp.easySolver();
+            const pnp::PnPResult refined_pose = pnp.getOutput();
+
+            bool use_refined = refined_pose.valid &&(!raw_pose.valid ||refined_pose.err + 0.03 < raw_pose.err);
+
+            pnp::PnPResult pose =use_refined ? refined_pose : raw_pose;
+
+            if (!pose.valid) continue;
+
+            //画两种角点
+            for (const auto& p : detection.corners)
+            cv::circle(frame, p, 2, cv::Scalar(0, 255, 255), 10);
+
+            for (const auto& p : refined)
+            cv::circle(frame, p, 2, cv::Scalar(255, 0, 255), 10);
+            
+            
+
+            /*
             //pnp
             const std::array<cv::Point2f, 4> pnp_corners 
             {
@@ -187,14 +296,24 @@ int main(int argc, char** argv)
             pnp.input(detection.corners, detection.big);
             pnp.easySolver();
             pnp::PnPResult pose {pnp.getOutput()};
+            */
 
             //这里写检测
-            if (!pose.valid)continue;
+            //if (!pose.valid)continue;
             errs.push_back(pose.err);
 
-            
-            //ekf的update
+            constexpr double kTargetMaxDistance = 2.5;  // 当前视频专用
+
             computeYPD(pose.measurement, ypd);
+
+            if (ypd.dist > kTargetMaxDistance)
+            {
+                // 远处的背景机器车，不送 EKF
+                continue;
+            }
+
+            //ekf的update
+            
             kalfilter::armerState efk_input{pose.measurement};
             if (!ekf_initialized)
             {
