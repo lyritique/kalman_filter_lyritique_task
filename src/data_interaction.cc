@@ -1,4 +1,5 @@
 # include "data_interaction.hpp"
+# include "type.hpp"
 # include <opencv2/calib3d.hpp>
 # include <opencv2/core.hpp>
 # include <iostream>
@@ -36,12 +37,15 @@ double wrapPi(double a)//我怎么觉得好像写过
 }
 
 std::array<cv::Point2f, 4> pnpSolver::canonicalize(
-    const std::array<cv::Point2f, 4>& raw, bool reverse) const
+    const std::array<cv::Point2d, 4>& raw, bool reverse) const
 {
-    cv::Point2f centre {0.0f, 0.0f};
+    //构造中心
+    cv::Point2d centre {0.0f, 0.0f};
     for (const auto& p : raw) centre += p;
     centre *= 0.25f;
 
+    //用order记顺序，再排序
+    //
     std::array<int, 4> order {0, 1, 2, 3};
     std::sort(order.begin(), order.end(), [&](int a, int b)
     {
@@ -99,7 +103,10 @@ void pnpSolver::input(
     const std::array<cv::Point2f, 4>& image_corners,
     bool big)
 {
-    corners.assign(image_corners.begin(), image_corners.end());
+    //把imagecorner赋值给corners
+    std::array<cv::Point2d, 4> corners{};
+    for (std::size_t i = 0; i < corners.size(); ++i) corners[i] = cv::Point2d(image_corners[i]); 
+
     armorPoint = big ? config.big_armorPoint
                      : config.small_armorPoint;
 
@@ -114,9 +121,7 @@ void pnpSolver::input(
 //先直接cv的Solver
 void pnpSolver::easySolver()
 {
-    //PnPResult pose;
-    //std::vector<cv::Mat> rvecs{}, tvecs{};//旋转向量，平移向量
-    //std::vector<double> errs;
+    
 
     output.setZero();
     output_valid_ = false;
@@ -125,18 +130,12 @@ void pnpSolver::easySolver()
 
     if (corners.size() != 4) return;
 
-    std::array<cv::Point2f, 4> raw {};
-    for (int i = 0; i < 4; ++i)
-        raw[i] = cv::Point2f(static_cast<float>(corners[i].x),
-                             static_cast<float>(corners[i].y));
-
-
-    std::vector<Candidate> candidates;
+    std::vector<candidate> candidates;
 
 
     for (const bool reverse : {false, true})
     {
-        const std::array<cv::Point2f, 4> ordered = canonicalize(raw, reverse);
+        const std::array<cv::Point2f, 4> ordered = canonicalize(corners, reverse);
 
         std::vector<cv::Mat> rvecs {}, tvecs {};
         const int nsol = cv::solvePnPGeneric(armorPoint, ordered,
@@ -157,16 +156,17 @@ void pnpSolver::easySolver()
                               camera_matrix_, distortion_coeffs_, reproj);
             if (reproj.size() != 4) continue;
 
-            double sq = 0.0;
+            double singleErr {};
             for (int k = 0; k < 4; ++k)
             {
                 const cv::Point2d diff = reproj[k] - cv::Point2d(ordered[k]);
-                sq += diff.dot(diff);
+                singleErr += diff.dot(diff);
             }
-            const double rms = std::sqrt(sq / 4.0);
+            const double rms = std::sqrt(singleErr / 4.0);
+
             if (!std::isfinite(rms) || rms > config.max_reproj_err) continue;
 
-            // 板法向 = 板坐标系的 x 轴
+            // 板法向是板坐标系的 x 轴
             const Eigen::Vector3d normal(R.at<double>(0, 0),
                                          R.at<double>(1, 0),
                                          R.at<double>(2, 0));
@@ -178,7 +178,7 @@ void pnpSolver::easySolver()
             double dyaw = 0.0;
             if (std::isfinite(previous_yaw)) dyaw = wrapPi(yaw - previous_yaw);
 
-            Candidate c;
+            candidate c;
             c.rms = rms;
             c.cost = rms + config.kyaw * dyaw * dyaw;
             c.tz = tz;
@@ -199,14 +199,14 @@ void pnpSolver::easySolver()
     if (candidates.empty()) return;
 
     // 选解顺序：法向必须朝向相机（拍号那一面），再比 重投影误差 + yaw 连续性
-    auto better = [](const Candidate& a, const Candidate& b)
+    auto better = [](const candidate& a, const candidate& b)
     {
         if (a.inward != b.inward) return !a.inward;
         return a.cost < b.cost;
     };
-    const Candidate chosen = *std::min_element(candidates.begin(), candidates.end(), better);
+    const candidate chosen = *std::min_element(candidates.begin(), candidates.end(), better);
 
-    std::array<cv::Point2f, 4> ordered_chosen = canonicalize(raw, chosen.reverse);
+    std::array<cv::Point2f, 4> ordered_chosen = canonicalize(corners, chosen.reverse);
 
     // 用 LM 精修；只有误差下降且 yaw 没跳变才采纳（避免 LM 跳到另一个分支）
     cv::Mat rvec_out = chosen.rvec.clone();
@@ -410,7 +410,7 @@ PnPResult pnpSolver::getOutput()
     result.valid = output_valid_;
     result.measurement = output;
     result.err = proj_err ;
-    return result;
     result.normal = last_normal_;
+    return result;
 }
 }

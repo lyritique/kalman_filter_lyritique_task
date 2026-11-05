@@ -12,6 +12,7 @@
 # include <vector>
 # include <opencv2/imgproc.hpp>
 # include <limits>
+# include <iostream>
 
 namespace {
 /*
@@ -231,6 +232,7 @@ int main(int argc, char** argv)
         const double image_time {video_start_time + frame_index / fps};
         const double dt {image_time-previous_image_time};
         previous_image_time = image_time;
+        
         const kalfilter::imu cam_imu {kalfilter::alignImuToImage (imu_data,image_time)};
 
         if (has_previous_time && ekf_initialized) ekf.predict(dt);
@@ -248,7 +250,6 @@ int main(int argc, char** argv)
         auto detections = detector.detect(frame);
         kalfilter::cam_ypd ypd {};
 
-        
 
         //draw装甲板
         draw::drawDetections(frame, detections);
@@ -346,6 +347,7 @@ int main(int argc, char** argv)
                 break;
             }
             ekf.update(efk_input, ypd);
+            std::cout << "\n";
         }
         ekf.renewArmorList();
 

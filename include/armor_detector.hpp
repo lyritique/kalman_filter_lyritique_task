@@ -2,12 +2,32 @@
 # define __ARMOR_DETECTOR__
 
 # include <array>
-#include <opencv2/core/types.hpp>
+# include <opencv2/core/types.hpp>
 # include <string>
 # include <vector>
 
 # include <opencv2/core.hpp>
 # include <opencv2/dnn.hpp>
+
+/*
+detector 类
+输入
+图象BGR
+输出
+armor旋转矩形 图象坐标系
+角点 图象坐标系
+置信，颜色，是否大装甲板，机器人编号
+
+图像坐标系：左上原点，x向右，y向下
+
+*/
+
+
+
+
+
+
+
 
 namespace detector {
 // 检测器配置

@@ -175,10 +175,10 @@ namespace kalfilter
                 //马氏距离
                 d2 = nu.transpose() * Sinv_id * nu;
 
-                std::cout << "id=" << id
-                << " d2=" << d2
-                << " nu_yaw=" << nu(3)
-                << '\n';
+                //std::cout << "id=" << id
+                //<< " d2=" << d2
+                //<< " nu_yaw=" << nu(3)
+                //<< '\n';
 
                 if (d2 <= config.chi2_gate ) return true;
                 else return false;
@@ -376,6 +376,8 @@ namespace kalfilter
 
         //检查是否过了匹配
         if (!armor.testResult.valid)return;
+
+        std::cout << armor.testResult.id ;
 
         //保存先验，写迭代
         Eigen::Matrix<double, 9, 1> x_iter = x_prior;

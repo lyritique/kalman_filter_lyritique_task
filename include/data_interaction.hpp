@@ -10,10 +10,28 @@
 # include <eigen3/Eigen/Eigen>
 
 
+/*
+pnp 类
+
+
+
+
+
+
+
+
+*/
+
+
+
+
+
+
+
+
+
+
 namespace pnp {
-
-namespace  {
-
 
 struct pnpConfig
 {
@@ -54,14 +72,16 @@ struct pnpConfig
            -0.0038352945867108721, -0.0020421443354436304, 0.0};
     };
 
+    //解算初筛阈值
     static const constexpr double max_reproj_err {3.0};                                                     //戴帽子大师
+    //解算结果cost参数
     static const constexpr double kyaw {0};
     static const constexpr double cost_threhold {33};
 
 
 };
     
-}
+
 
 
 
@@ -74,24 +94,6 @@ struct PnPResult
     double err {};
     Eigen::Vector3d normal {Eigen::Vector3d::Zero()};   // 板外法向（相机系）
 };
-
-
-struct Candidate
-    {
-        double rms {};
-        double cost {};
-        double tz {};
-        double yaw {};
-        Eigen::Matrix<double, 4, 1> measurement {};
-        Eigen::Vector3d normal {Eigen::Vector3d::Zero()};
-        cv::Mat rvec {};
-        cv::Mat tvec {};
-        int branch {};
-        bool inward {};          // n·t > 0：法向背离相机
-        bool reverse {};
-    };
-
-
 
 
 
@@ -116,6 +118,7 @@ class pnpSolver
     {
         return distortion_coeffs_;
     }
+
     private:
 
     // 把4个角点排成与 armorPoint 模板一一对应的顺序：
@@ -123,12 +126,11 @@ class pnpSolver
     // 旋转环，使"第一条边"落在 135mm 长边上
     // reverse=true 时反向遍历（用来消除镜像）
     // 这样完全不依赖网络关键点输出的顺序。
-    std::array<cv::Point2f, 4> canonicalize(const std::array<cv::Point2f, 4>& raw,
-                                            bool reverse) const;
+    std::array<cv::Point2f, 4> canonicalize(const std::array<cv::Point2d, 4>& raw, bool reverse) const;
 
     Eigen::Matrix<double,4,1> output = Eigen::Matrix<double, 4, 1>::Zero();
     bool output_valid_ = false;
-    std::vector<cv::Point2d> corners {};
+    std::array<cv::Point2d,4> corners {};
 
     pnpConfig config {};
     //存装甲板系下的装甲板，构造默认小的
