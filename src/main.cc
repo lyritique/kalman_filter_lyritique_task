@@ -12,6 +12,7 @@
 # include <vector>
 # include <opencv2/imgproc.hpp>
 # include <limits>
+# include <eigen3/Eigen/Eigen>
 # include <iostream>
 
 namespace {
@@ -72,6 +73,13 @@ std::array<cv::Point2f, 4> reorderArmorCorners(
 }
 
 */
+//四元数 归一化 + 变旋转矩阵
+Eigen::Matrix3d toMatrix(const Eigen::Quaterniond& q)
+{
+    Eigen::Quaterniond qn = q.normalized();   // 先归一化，slerp 后数值可能有微小漂移
+    return qn.toRotationMatrix();             // 四元数 -> 3x3 旋转矩阵
+}
+
 
 std::array<cv::Point2f, 4> refineArmorCorners(
     const cv::Mat& gray,
@@ -168,34 +176,6 @@ int main(int argc, char** argv)
     int width  = frame.cols;
     int height = frame.rows;
     
-    /*
-
-    //第一帧拿都拿了，init一下ekf
-    {
-        auto detections = detector.detect(frame);
-        Eigen::Matrix<double,4,1> best {};
-        double err {1024};
-
-        for (auto detection:detections)
-        {
-            //pnp
-            pnp::PnPResult pose {};
-            pnp.input(detection.corners, detection.big);
-            pnp.easySolver();
-            pose = pnp.getOutput();
-        
-            //这里写检测
-            //这里的检测应该要挑出最好的
-            if (pose.err < err)   best = pose.measurement;
-        }
-            //ekf的input
-            kalfilter::armerState efk_input{};
-            efk_input.measurement = std::move(best);
-
-            ekf.init(efk_input);
-    }
-
-    */
     
     //用上面的数据构建输出video的writer
     cv::VideoWriter writer(output_path + "/output_video.avi", 
@@ -213,6 +193,7 @@ int main(int argc, char** argv)
 
     // 世界系 = 第 0 帧相机系，用 IMU 相对姿态把云台转动补掉
     std::vector<Eigen::Matrix3d> R_wc(static_cast<std::size_t>(frame_number), Eigen::Matrix3d::Identity());
+    
 
     //吸收教训，在循环内初始化
     bool ekf_initialized = false;
@@ -225,6 +206,16 @@ int main(int argc, char** argv)
     const double video_start_time = imu_data.front().time;
     double previous_image_time {};
     bool has_previous_time = false;
+
+    for (int k = 0; k < frame_number; ++k)
+    {
+        const double image_time = video_start_time + k / fps;
+        const auto imu_k = kalfilter::alignImuToImage(imu_data, image_time);  // 内含 9ms offset
+        const Eigen::Matrix3d R_k = toMatrix(imu_k.q);
+        if (k == 0) continue;                                                // 第 0 帧保持单位阵
+        const auto imu_0 = kalfilter::alignImuToImage(imu_data, video_start_time);
+        R_wc[k] = toMatrix(imu_0.q).transpose() * R_k;   // R0ᵀ · Rk
+    }
 
     for (int frame_index {};frame_index < frame_number;++frame_index)
     {
@@ -286,31 +277,7 @@ int main(int argc, char** argv)
 
             for (const auto& p : refined)
             cv::circle(frame, p, 2, cv::Scalar(255, 0, 255), 10);
-            
-            
-
-            
-
-
-
-
-
-            /*
-            //pnp
-            const std::array<cv::Point2f, 4> pnp_corners 
-            {
-            detection.corners[1],  // BL
-            detection.corners[0],  // TL
-            detection.corners[3],  // TR
-            detection.corners[2],  // BR
-            };
-            pnp.input(detection.corners, detection.big);
-            pnp.easySolver();
-            pnp::PnPResult pose {pnp.getOutput()};
-            */
-
-            //这里写检测
-            //if (!pose.valid)continue;
+                        
             errs.push_back(pose.err);
 
             constexpr double kTargetMaxDistance = 2.5;  // 当前视频专用
