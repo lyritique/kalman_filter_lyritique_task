@@ -31,8 +31,8 @@ struct KalmanConfig
     double max_yaw_innovation {0.7853981633974483};  // 45 度
     double chi2_gate {9.49};
 
-    //狠狠限制r的协方差，不让它跳了
-    double kRadiusSigma = 0.01;
+    //狠狠限制r的协方差
+    double kRadiusSigma = 1e-4;
 
      //初始化不确定度（原来用 P.setIdentity() 当协方差，位置方差 1 m^2 太离谱）
     double init_sigma_pos {0.05};    // m

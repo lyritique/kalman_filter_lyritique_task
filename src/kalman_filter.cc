@@ -63,9 +63,9 @@ namespace kalfilter
             const double r = X_(8);
 
             Eigen::Matrix<double, 4, 1> y;
-            y <<X_(0) - r * s,
+            y <<X_(0) + r * s,
                 X_(1),
-                X_(2) - r * c,
+                X_(2) + r * c,
                 theta;
 
             return y;
@@ -84,14 +84,14 @@ namespace kalfilter
         
 
             J(0, 0) = 1.0;
-            J(0, 3) = -r * co;
-            J(0, 8) = -s;
+            J(0, 3) = r * co;
+            J(0, 8) = s;
 
             J(1, 1) = 1.0;
 
             J(2, 2) = 1.0;
-            J(2, 3) = r * s;
-            J(2, 8) = -co;
+            J(2, 3) = -r * s;
+            J(2, 8) = co;
 
             J(3, 3) = 1.0;
 
@@ -215,24 +215,6 @@ namespace kalfilter
             
             if (best.id >= 0)best.valid = true;
 
-            /*
-            if (best.d2 >= config.chi2_gate)
-            {
-                if (isSameArmor(next_id) && d2 < config.chi2_gate)
-                    {
-                        if (next_id ==4) next_id=0 ;
-                        max_id  = next_id;
-                        best.d2 = d2;
-                        best.id = max_id;
-                        best.nu = nu;
-                        best.H = H_id;
-                        best.Sinv = Sinv_id;
-                        best.valid=true;
-                    }
-                else best.valid = false;
-            }
-            else best.valid=true;
-            */
 
             return best;
             
@@ -253,16 +235,16 @@ namespace kalfilter
         measurement.testResult.id = 0;
         F.setIdentity();
 
-        constexpr double radius = 0.26;
+        constexpr double radius = 0.254;
         X.setZero();
         X(8) = radius; //魔法数字
         const double c = measurement.testResult.id * kPI * 0.5;
         X(1) = measurement.measurement(1);                          // 高度/该轴直接对应
         X(3) = measurement.measurement(3);                          // 旋转角，中心yaw零对应首个数据
-        //hx模型：q = p - r*n
-        //因此初始化时：p = q + r*n
-        X(0) = measurement.measurement(0) + radius * std::sin(measurement.measurement(3));      
-        X(2) = measurement.measurement(2) + radius * std::cos(measurement.measurement(3));   
+        //hx模型：q = p - r*n / 
+        //因此初始化时：p = q + r*n → 板心 q = 车心 p + r*n / 车心 p = 板心 q - r*n
+        X(0) = measurement.measurement(0) - radius * std::sin(measurement.measurement(3));      
+        X(2) = measurement.measurement(2) - radius * std::cos(measurement.measurement(3));   
 
         P.setIdentity();
         const double sp = config.init_sigma_pos * config.init_sigma_pos;
