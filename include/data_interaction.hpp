@@ -126,6 +126,7 @@ class pnpSolver
     // 旋转环，使"第一条边"落在 135mm 长边上
     // reverse=true 时反向遍历（用来消除镜像）
     // 这样完全不依赖网络关键点输出的顺序。
+    //虽然好像无用还浪费性能
     std::array<cv::Point2f, 4> canonicalize(const std::array<cv::Point2d, 4>& raw, bool reverse) const;
 
     Eigen::Matrix<double,4,1> output = Eigen::Matrix<double, 4, 1>::Zero();
@@ -142,6 +143,7 @@ class pnpSolver
     double proj_err {};
 
     // 上一帧可信的yaw法向，用来在两个 IPPE 解之间做连续性判断,不要跳了
+    //最无用的，要么是与同帧另一个装甲版算dyaw，要么就是无id无法与上帧的装甲版建立联系
     double previous_yaw {10086};
     Eigen::Vector3d previous_normal {Eigen::Vector3d::Zero()};
 

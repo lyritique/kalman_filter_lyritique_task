@@ -127,9 +127,6 @@ namespace kalfilter
 
             return  Eigen::Matrix4d   { J * R_ypd.asDiagonal() * J.transpose()};
             
-
-
-
         }
 
 
@@ -149,12 +146,6 @@ namespace kalfilter
             Eigen::Matrix4d Sinv_id {};
             double d2 {};
 
-            //如果EKF中没存上次的装甲板，就直接加一个默认值
-            if (id_list.empty()) 
-            {
-                id_list.push_back(storedID {});
-            };
-
             auto isSameArmor = [&](int id)
             {
                 h_id = observationModel(X, id);
@@ -164,8 +155,9 @@ namespace kalfilter
                 nu(3) = wrap(nu(3));
 
                 // 欧氏粗筛
-                const double pos = std::sqrt(nu(0)*nu(0)+nu(1)*nu(1)+nu(2)*nu(2));
-                if (pos > config.assoc_pos_gate) return false;;
+                const double pos = nu.head<3>().norm();
+                if (pos > config.assoc_pos_gate) return false;
+                if (std::abs(nu(3)) > config.max_yaw_innovation) return false;  // yaw 必须 < 45 度
 
                 // 马氏距离的有关量的计算
                 H_id = computeH(X, id);
@@ -191,9 +183,6 @@ namespace kalfilter
 
             for (int id{};id < 4;++id)
             {
-                //防止同一帧的上一个装甲板
-                //if (id_list[i].isThisFrame) continue;
-
                 // 检查这个 id 本帧是否已经使用过
                 bool used_this_frame = false;
 
@@ -220,8 +209,7 @@ namespace kalfilter
                 }
                 //std::cout << "与第" <<id <<"个板" <<d2 ;
             }
-            std::cout << "\r\n";
-            //int next_id {max_id + 1};
+            //std::cout << "\r\n";
           
             
             
@@ -252,33 +240,40 @@ namespace kalfilter
         }
     }//namespace
     
-    KalmanFilter::KalmanFilter(const KalmanConfig&)
+    KalmanFilter::KalmanFilter(const KalmanConfig& cfg )
+    : config(cfg)     //初始化列表
     {
         reset();
         F.setIdentity();
-        config =KalmanConfig {};
+        
     }
 
     void KalmanFilter::init(armerState& measurement)
     {
         measurement.testResult.id = 0;
         F.setIdentity();
+
         constexpr double radius = 0.26;
         X.setZero();
         X(8) = radius; //魔法数字
         const double c = measurement.testResult.id * kPI * 0.5;
-        //X(8) = radius;
-        //X(3) = q.yaw;
-        X(1) = measurement.measurement(1);      
-        X(3) = measurement.measurement(3) - c;                         // 旋转角
-        //X(1) = measurement.measurement(1);                             // 高度/该轴直接对应
+        X(1) = measurement.measurement(1);                          // 高度/该轴直接对应
+        X(3) = measurement.measurement(3);                          // 旋转角，中心yaw零对应首个数据
         //hx模型：q = p - r*n
         //因此初始化时：p = q + r*n
         X(0) = measurement.measurement(0) + radius * std::sin(measurement.measurement(3));      
-        X(2) = measurement.measurement(2) + radius * std::cos(measurement.measurement(3));      
+        X(2) = measurement.measurement(2) + radius * std::cos(measurement.measurement(3));   
+
         P.setIdentity();
-        P *= 1 ;//ai说要写成单位的，不能直接fill，0.1后面填config处理
-        P(8, 8) = config.kRadiusSigma * config.kRadiusSigma;
+        const double sp = config.init_sigma_pos * config.init_sigma_pos;
+        const double sv = config.init_sigma_vel * config.init_sigma_vel;
+        const double sy = config.init_sigma_yaw * config.init_sigma_yaw;
+        const double sw = config.init_sigma_vyaw * config.init_sigma_vyaw;
+        P(0,0) = sp; P(1,1) = sp; P(2,2) = sp;
+        P(3,3) = sy;
+        P(4,4) = sv; P(5,5) = sv; P(6,6) = sv;
+        P(7,7) = sw;
+        P(8,8) = config.kRadiusSigma * config.kRadiusSigma;
         initialized = true;
 
     }
@@ -297,13 +292,6 @@ namespace kalfilter
 
     void KalmanFilter::predict(const double& dt)
     {
-        //f(X)部分，由于后面不再用到t-1的X^+，直接覆盖
-        /*我的旧写法
-        X(0) += X(4)*dt;
-        X(1) += X(5)*dt;
-        X(2) += X(6)*dt;
-        X(3) += X(7)*dt;
-        */
         X.head<3>() += X.segment<3>(4)*dt;
         //X(3) = wrap(X(7)*dt+X(3));
         X(3) = X(7)*dt+X(3);
@@ -418,11 +406,11 @@ namespace kalfilter
     
             // 7. 从x_prior出发
             Eigen::Matrix<double, 9, 1> x_next = x_prior + K * residual;
-            x_next(3) = x_next(3);
+            
 
             // 8. 判断是否收敛
             Eigen::Matrix<double, 9, 1> step = x_next - x_iter;
-            step(3) = step(3);
+            step(3) = wrap(step(3));
             x_iter = x_next;
 
             //每一项都要很小
@@ -448,7 +436,6 @@ namespace kalfilter
 
         //更新X，P
         X = x_iter;
-        X(3) = X(3);
 
         const Eigen::Matrix<double, 4, 9> H_final =computeH(X, armor.testResult.id);
 

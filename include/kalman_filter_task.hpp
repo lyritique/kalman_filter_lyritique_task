@@ -27,11 +27,18 @@ struct KalmanConfig
 
 
 
-    double assoc_pos_gate {50};
+    double assoc_pos_gate {2.5};
+    double max_yaw_innovation {0.7853981633974483};  // 45 度
     double chi2_gate {9.49};
 
     //狠狠限制r的协方差，不让它跳了
     double kRadiusSigma = 0.01;
+
+     //初始化不确定度（原来用 P.setIdentity() 当协方差，位置方差 1 m^2 太离谱）
+    double init_sigma_pos {0.05};    // m
+    double init_sigma_vel {4.0};     // m/s
+    double init_sigma_yaw {0.25};    // rad
+    double init_sigma_vyaw {6.0};    // rad/s
 };
 
 //相机系球坐标，用于求R观测噪声协方差矩阵，噪声天然的坐标系是 YPD
@@ -73,7 +80,7 @@ struct KFResult
 
 class KalmanFilter
 {
-    public:
+    public: 
         explicit KalmanFilter(const KalmanConfig& config = KalmanConfig{});
 
         void init(armerState& measurement);

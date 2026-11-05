@@ -250,7 +250,6 @@ int main(int argc, char** argv)
         auto detections = detector.detect(frame);
         kalfilter::cam_ypd ypd {};
 
-
         //draw装甲板
         draw::drawDetections(frame, detections);
 
